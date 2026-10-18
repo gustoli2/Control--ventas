@@ -4,8 +4,6 @@ import pandas as pd
 import requests
 import urllib.parse
 from datetime import datetime, date
-import os
-from PIL import Image, ImageDraw, ImageFont
 
 # Configuración de la página
 st.set_page_config(
@@ -47,73 +45,6 @@ def obtener_tasa_bcv():
         pass
 
     return 880.12
-
-# --- FUNCIÓN PARA GENERAR LA TARJETA DE COBRO CON LETRAS GRANDES ---
-def generar_imagen_cobro(nombre_cliente, pendiente, neto, abonado, cant_pagos, fecha_antigua):
-    # Lienzo grande de alta resolución (1100x1250 px)
-    img = Image.new("RGB", (1100, 1250), color="#F5F7F8")
-    draw = ImageDraw.Draw(img)
-    
-    # Fuentes con tamaños mucho más grandes y claros
-    try:
-        font_logo = ImageFont.truetype("arial.ttf", 56)
-        font_titulo = ImageFont.truetype("arial.ttf", 46)
-        font_sub = ImageFont.truetype("arial.ttf", 38)
-        font_texto = ImageFont.truetype("arial.ttf", 48)
-        font_monto = ImageFont.truetype("arial.ttf", 56)
-    except:
-        font_logo = ImageFont.load_default()
-        font_titulo = ImageFont.load_default()
-        font_sub = ImageFont.load_default()
-        font_texto = ImageFont.load_default()
-        font_monto = ImageFont.load_default()
-
-    # Recuadro principal estilo tarjeta blanca elegante
-    draw.rectangle([(50, 50), (1050, 1200)], fill="#FFFFFF", outline="#E0E0E0", width=3)
-
-    # Cabecera superior con el color corporativo de Olinuts
-    draw.rectangle([(50, 50), (1050, 280)], fill="#3F5963")
-    
-    # Logo y título
-    draw.text((550, 120), "☕ Olinuts", fill="#FFDE59", font=font_logo, anchor="mm")
-    draw.text((550, 210), f"Cliente: {nombre_cliente}", fill="#FFFFFF", font=font_titulo, anchor="mm")
-
-    # Formatear fecha legible (Ej: 06 oct 2026)
-    try:
-        dt = datetime.strptime(fecha_antigua.split()[0], "%Y-%m-%d")
-        meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
-        fecha_formateada = f"{dt.day:02d} {meses[dt.month-1]} {dt.year}"
-    except:
-        fecha_formateada = fecha_antigua
-
-    # Líneas financieras con fuentes grandes
-    y_pos = 380
-    
-    draw.text((120, y_pos), "Pendiente:", fill="#333333", font=font_texto)
-    draw.text((980, y_pos), f"${pendiente:,.2f}", fill="#E53935", font=font_monto, anchor="rt")
-    y_pos += 120
-
-    draw.text((120, y_pos), "Deuda neta:", fill="#333333", font=font_texto)
-    draw.text((980, y_pos), f"${neto:,.2f}", fill="#E53935", font=font_monto, anchor="rt")
-    y_pos += 120
-
-    draw.text((120, y_pos), "Abonado:", fill="#333333", font=font_texto)
-    draw.text((980, y_pos), f"${abonado:,.2f}", fill="#00A86B", font=font_monto, anchor="rt")
-    y_pos += 140
-
-    # Línea divisoria decorativa
-    draw.line([(120, y_pos), (980, y_pos)], fill="#E0E0E0", width=4)
-    y_pos += 90
-
-    # Texto inferior de detalle de pagos con letras grandes
-    draw.text((550, y_pos), f"Tienes {cant_pagos} pago(s) pendiente(s)", fill="#222222", font=font_sub, anchor="mm")
-    y_pos += 80
-    draw.text((550, y_pos), f"desde el día {fecha_formateada}", fill="#555555", font=font_sub, anchor="mm")
-
-    # Guardar imagen en alta calidad
-    ruta_imagen = "recibo_cobro_hd.png"
-    img.save(ruta_imagen, quality=95)
-    return ruta_imagen
 
 # --- FUNCIONES DE NAVEGACIÓN ---
 def ir_a_seccion(nombre_seccion):
@@ -659,32 +590,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
             deuda_maxima_bs = deuda_maxima * tasa_oficial
 
-            # --- CONSULTAR DETALLES ADICIONALES DEL CLIENTE ---
-            conn = conectar_db()
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT MIN(fecha), COUNT(id) FROM ventas 
-                WHERE cliente_id = ? AND estado_pago = 'Pendiente' AND saldo_pendiente > 0
-            ''', (cliente_id_sel,))
-            res_fechas = cursor.fetchone()
-            conn.close()
-
-            fecha_mas_antigua = res_fechas[0] if res_fechas and res_fechas[0] else str(date.today())
-            cant_pagos_pendientes = res_fechas[1] if res_fechas else 1
-
-            # Generar imagen con letras grandes y alta resolución
-            ruta_img_generada = generar_imagen_cobro(
-                nombre_cliente=cliente_info['Cliente'],
-                pendiente=deuda_maxima,
-                neto=deuda_maxima,
-                abonado=0.0,
-                cant_pagos=cant_pagos_pendientes,
-                fecha_antigua=fecha_mas_antigua
-            )
-
-            # Mostrar la tarjeta grande y nítida en pantalla
-            st.image(ruta_img_generada, caption="📱 Tarjeta HD de Cobro (Letras Grandes)", use_container_width=True)
-
             # --- BOTÓN DE ENVIAR WHATSAPP ---
             tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
             if tel_bruto.startswith("0"):
@@ -725,8 +630,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                     </div>
                 </a>
             ''', unsafe_allow_html=True)
-            
-            st.success("💡 **Instrucciones:** La tarjeta se ha generado con letras grandes y claras arriba. Al presionar el botón verde, se abrirá WhatsApp con el mensaje listo. Mantén presionada la imagen de arriba para guardarla en tu galería y adjúntala en el chat junto con el mensaje.")
 
             col_ab1, col_ab2 = st.columns(2)
             with col_ab1:
