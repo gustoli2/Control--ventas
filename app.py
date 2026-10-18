@@ -324,16 +324,16 @@ elif menu == "🛒 Registrar Venta":
                 st.success(f"🎉 ¡Venta registrada exitosamente para {cliente_data['nombre']}!")
 
 # ---------------------------------------------------------
-# OPCIÓN 2: GESTIÓN DE CLIENTES Y DEUDAS
+# OPCIÓN 2: GESTIÓN DE CLIENTES Y CUENTAS POR COBRAR
 # ---------------------------------------------------------
-elif menu == "👥 Clientes y Deudas":
+elif menu == "👥 Clientes y Cuentas por cobrar":
     col_header, col_home = st.columns([3, 1])
     with col_header:
-        st.header("👥 Gestión de Clientes y Deudas")
+        st.header("👥 Gestión de Clientes y Cuentas por cobrar")
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_c", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 Listado General", "➕ Agregar Nuevo Cliente", "✏️ Editar / Eliminar Cliente", "⚠️ Clientes Deudores"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 Listado General", "➕ Agregar Nuevo Cliente", "✏️ Editar / Eliminar Cliente", "⚠️ Cuentas por cobrar"])
 
     with tab1:
         conn = conectar_db()
@@ -409,7 +409,7 @@ elif menu == "👥 Clientes y Deudas":
             st.info("No hay clientes disponibles para editar.")
 
     with tab4:
-        st.subheader("Listado de Deudas Pendientes por Cliente")
+        st.subheader("Listado de Cuentas por cobrar")
         conn = conectar_db()
         df_deudas_resumen = pd.read_sql_query('''
             SELECT c.id AS cliente_id,
@@ -425,10 +425,10 @@ elif menu == "👥 Clientes y Deudas":
         conn.close()
 
         if df_deudas_resumen.empty:
-            st.success("🎉 ¡No hay deudas pendientes en este momento!")
+            st.success("🎉 ¡No hay cuentas por cobrar en este momento!")
         else:
             total_general = df_deudas_resumen['Saldo Pendiente ($)'].sum()
-            st.metric("Total General en Deudas", f"${total_general:,.2f}")
+            st.metric("Total General en cuentas por cobrar", f"${total_general:,.2f}")
             
             df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Compras', 'Saldo Pendiente ($)']]
             st.dataframe(df_mostrar, use_container_width=True)
