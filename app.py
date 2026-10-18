@@ -391,7 +391,6 @@ elif menu == "🛒 Registrar Venta":
     if df_prods.empty:
         st.warning("⚠️ Primero debes agregar productos en la sección 'Productos e Inventario'.")
     else:
-        # Selector de Fecha de la Venta
         st.markdown('<div class="sub-header-yellow">📅 Fecha de la Venta</div>', unsafe_allow_html=True)
         fecha_venta_elegida = st.date_input("Selecciona la fecha en la que se realizó la venta", value=date.today())
 
@@ -459,7 +458,6 @@ elif menu == "🛒 Registrar Venta":
                 conn = conectar_db()
                 cursor = conn.cursor()
                 
-                # Mantener la hora actual exacta combinada con la fecha seleccionada por el usuario
                 hora_actual_str = datetime.now().strftime(" %H:%M:%S")
                 fecha_final_str = fecha_venta_elegida.strftime("%Y-%m-%d") + hora_actual_str
                 
@@ -603,7 +601,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             st.info("No hay clientes disponibles para editar.")
 
     elif submenu == "📋 Cuentas por Cobrar":
-        st.markdown('<div class="sub-header-yellow">📋 Listado de Cuentas por Cobrar por Cliente</div>', unsafe_allow_html=True)
         conn = conectar_db()
         df_deudas_resumen = pd.read_sql_query('''
             SELECT c.id AS cliente_id,
@@ -627,9 +624,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             col_m1.metric("Total USD por Cobrar", f"${total_general:,.2f}")
             col_m2.metric("Total Bs. por Cobrar", f"Bs. {total_general_bs:,.2f}")
             
-            df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Compras', 'Saldo Pendiente ($)']]
-            st.dataframe(df_mostrar, use_container_width=True)
-            
+            # --- SECCIÓN PRIMERO: REGISTRAR ABONO / NOTIFICAR WHATSAPP ---
             st.markdown('<div class="sub-header-yellow">💵 Registrar Abono o Pago / Notificar por WhatsApp</div>', unsafe_allow_html=True)
             
             opciones_clientes_deuda = {f"{row['Cliente']} (Monto Pendiente: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_resumen.iterrows()}
@@ -721,6 +716,13 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 st.balloons()
                 st.success(f"🎉 ¡Abono de ${monto_abono:,.2f} registrado exitosamente para {cliente_info['Cliente']}!")
                 st.rerun()
+
+            st.divider()
+
+            # --- TABLA UBICADA AL FINAL DE LA PÁGINA ---
+            st.markdown('<div class="sub-header-yellow">📋 Listado de Cuentas por Cobrar por Cliente</div>', unsafe_allow_html=True)
+            df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Compras', 'Saldo Pendiente ($)']]
+            st.dataframe(df_mostrar, use_container_width=True)
 
 # ---------------------------------------------------------
 # OPCIÓN 3: PRODUCTOS E INVENTARIO
