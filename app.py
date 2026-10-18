@@ -60,7 +60,7 @@ def ir_a_subseccion_inventario(nombre_subseccion):
 st.markdown("""
 <style>
     .stApp {
-        background-color: #FAFAFA;
+        background-color: #F5F2EB;
     }
     .header-container {
         background-color: #FFDE59;
