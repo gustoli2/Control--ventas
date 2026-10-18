@@ -256,7 +256,11 @@ if menu == "🏠 Inicio / Dashboard":
 # OPCIÓN 1: REGISTRAR VENTA
 # ---------------------------------------------------------
 elif menu == "🛒 Registrar Venta":
-    st.header("🛒 Registrar Nueva Venta")
+    col_header, col_home = st.columns([3, 1])
+    with col_header:
+        st.header("🛒 Registrar Nueva Venta")
+    with col_home:
+        st.button("🏠 Volver al Inicio", key="btn_home_v", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
     
     conn = conectar_db()
     df_prods = pd.read_sql_query("SELECT id, nombre, costo_unitario, precio_venta, stock FROM productos", conn)
@@ -323,7 +327,11 @@ elif menu == "🛒 Registrar Venta":
 # OPCIÓN 2: GESTIÓN DE CLIENTES Y DEUDAS
 # ---------------------------------------------------------
 elif menu == "👥 Clientes y Deudas":
-    st.header("👥 Gestión de Clientes y Deudas")
+    col_header, col_home = st.columns([3, 1])
+    with col_header:
+        st.header("👥 Gestión de Clientes y Deudas")
+    with col_home:
+        st.button("🏠 Volver al Inicio", key="btn_home_c", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
     tab1, tab2, tab3, tab4 = st.tabs(["📋 Listado General", "➕ Agregar Nuevo Cliente", "✏️ Editar / Eliminar Cliente", "⚠️ Clientes Deudores"])
 
@@ -478,7 +486,11 @@ elif menu == "👥 Clientes y Deudas":
 # OPCIÓN 3: PRODUCTOS E INVENTARIO
 # ---------------------------------------------------------
 elif menu == "📦 Productos e Inventario":
-    st.header("📦 Gestión de Inventario")
+    col_header, col_home = st.columns([3, 1])
+    with col_header:
+        st.header("📦 Gestión de Inventario")
+    with col_home:
+        st.button("🏠 Volver al Inicio", key="btn_home_p", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
     tab1, tab2, tab3 = st.tabs(["📋 Listado de Productos", "➕ Agregar Nuevo Producto", "✏️ Editar / Eliminar Producto"])
 
@@ -555,7 +567,11 @@ elif menu == "📦 Productos e Inventario":
 # OPCIÓN 4: REPORTES Y MÉTRICAS
 # ---------------------------------------------------------
 elif menu == "📈 Reportes y Métricas":
-    st.header("📈 Reportes Financieros")
+    col_header, col_home = st.columns([3, 1])
+    with col_header:
+        st.header("📈 Reportes Financieros")
+    with col_home:
+        st.button("🏠 Volver al Inicio", key="btn_home_r", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
     conn = conectar_db()
     df_ventas = pd.read_sql_query('''
