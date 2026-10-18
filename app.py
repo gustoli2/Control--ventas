@@ -84,6 +84,18 @@ st.markdown("""
         margin-bottom: 10px;
         box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.05);
     }
+    .sub-header-yellow {
+        background-color: #FFEE99;
+        border: 1px solid #FBC02D;
+        padding: 10px 14px;
+        border-radius: 10px;
+        color: #222222;
+        font-size: 16px;
+        font-weight: bold;
+        margin-top: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.04);
+    }
     .tasa-card {
         background-color: #FFF9C4;
         border: 1px solid #FBC02D;
@@ -479,7 +491,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
     submenu = st.session_state['subseccion_clientes']
 
     if submenu == "📋 Listado General":
-        st.subheader("📋 Listado General de Clientes")
+        st.markdown('<div class="sub-header-yellow">📋 Listado General de Clientes</div>', unsafe_allow_html=True)
         conn = conectar_db()
         df_cli = pd.read_sql_query("SELECT id AS 'ID', nombre AS 'Nombre', telefono AS 'Teléfono' FROM clientes", conn)
         conn.close()
@@ -490,7 +502,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             st.info("No hay clientes registrados aún.")
 
     elif submenu == "➕ Agregar Cliente":
-        st.subheader("➕ Agregar Nuevo Cliente")
+        st.markdown('<div class="sub-header-yellow">➕ Agregar Nuevo Cliente</div>', unsafe_allow_html=True)
         with st.form("form_cliente"):
             nombre_cliente = st.text_input("Nombre Completo del Cliente")
             telefono_cliente = st.text_input("Número de Teléfono / WhatsApp")
@@ -507,7 +519,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                     st.rerun()
 
     elif submenu == "✏️ Editar / Eliminar":
-        st.subheader("✏️ Editar o Eliminar Cliente Existente")
+        st.markdown('<div class="sub-header-yellow">✏️ Editar o Eliminar Cliente Existente</div>', unsafe_allow_html=True)
         conn = conectar_db()
         df_cli_edit = pd.read_sql_query("SELECT * FROM clientes", conn)
         conn.close()
@@ -554,7 +566,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             st.info("No hay clientes disponibles para editar.")
 
     elif submenu == "📋 Cuentas por Cobrar":
-        st.subheader("📋 Listado de Cuentas por Cobrar por Cliente")
+        st.markdown('<div class="sub-header-yellow">📋 Listado de Cuentas por Cobrar por Cliente</div>', unsafe_allow_html=True)
         conn = conectar_db()
         df_deudas_resumen = pd.read_sql_query('''
             SELECT c.id AS cliente_id,
@@ -581,7 +593,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Compras', 'Saldo Pendiente ($)']]
             st.dataframe(df_mostrar, use_container_width=True)
             
-            st.subheader("💵 Registrar Abono o Pago / Notificar por WhatsApp")
+            st.markdown('<div class="sub-header-yellow">💵 Registrar Abono o Pago / Notificar por WhatsApp</div>', unsafe_allow_html=True)
             
             opciones_clientes_deuda = {f"{row['Cliente']} (Monto Pendiente: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_resumen.iterrows()}
             cliente_a_liquidar_str = st.selectbox("Selecciona el Cliente", list(opciones_clientes_deuda.keys()))
@@ -719,7 +731,7 @@ elif menu == "📦 Productos e Inventario":
     sub_inv = st.session_state['subseccion_inventario']
 
     if sub_inv == "📋 Listado de Productos":
-        st.subheader("📋 Listado de Productos")
+        st.markdown('<div class="sub-header-yellow">📋 Listado de Productos</div>', unsafe_allow_html=True)
         conn = conectar_db()
         df_prods = pd.read_sql_query("SELECT id AS ID, nombre AS Producto, costo_unitario AS 'Costo ($)', precio_venta AS 'Precio ($)', stock AS Stock FROM productos", conn)
         conn.close()
@@ -731,7 +743,7 @@ elif menu == "📦 Productos e Inventario":
             st.info("No hay productos registrados aún.")
 
     elif sub_inv == "➕ Agregar Nuevo Producto":
-        st.subheader("➕ Agregar Nuevo Producto")
+        st.markdown('<div class="sub-header-yellow">➕ Agregar Nuevo Producto</div>', unsafe_allow_html=True)
         with st.form("form_producto"):
             nombre = st.text_input("Nombre del Producto")
             col1, col2, col3 = st.columns(3)
@@ -750,7 +762,7 @@ elif menu == "📦 Productos e Inventario":
                     st.rerun()
 
     elif sub_inv == "✏️ Editar / Eliminar":
-        st.subheader("✏️ Editar o Eliminar Producto Existente")
+        st.markdown('<div class="sub-header-yellow">✏️ Editar o Eliminar Producto Existente</div>', unsafe_allow_html=True)
         conn = conectar_db()
         df_prods_edit = pd.read_sql_query("SELECT * FROM productos", conn)
         conn.close()
