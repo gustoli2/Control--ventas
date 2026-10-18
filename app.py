@@ -11,13 +11,19 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Inicializar la clave 'menu_radio' si no existe
+# Inicializar claves de estado de navegación si no existen
 if 'menu_radio' not in st.session_state:
     st.session_state['menu_radio'] = "🏠 Inicio / Dashboard"
+
+if 'subseccion_clientes' not in st.session_state:
+    st.session_state['subseccion_clientes'] = "📋 Listado General"
 
 # --- FUNCIONES DE NAVEGACIÓN ---
 def ir_a_seccion(nombre_seccion):
     st.session_state['menu_radio'] = nombre_seccion
+
+def ir_a_subseccion_clientes(nombre_subseccion):
+    st.session_state['subseccion_clientes'] = nombre_subseccion
 
 # --- ESTILOS CSS PERSONALIZADOS ---
 st.markdown("""
@@ -217,7 +223,6 @@ if menu == "🏠 Inicio / Dashboard":
 
     st.markdown('<div class="quick-access-title">Descubre todo lo que puedes hacer</div>', unsafe_allow_html=True)
     
-    # Botones directos con callback
     st.button("🛒  Nueva Venta", key="btn_nv", use_container_width=True, on_click=ir_a_seccion, args=("🛒 Registrar Venta",))
 
     c1, c2 = st.columns(2)
@@ -333,9 +338,53 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_c", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 Listado General", "➕ Agregar Nuevo Cliente", "✏️ Editar / Eliminar Cliente", "📋 Cuentas por Cobrar"])
+    st.markdown('<div class="quick-access-title">Opciones de Gestión</div>', unsafe_allow_html=True)
+    
+    # Cuadrícula de Tarjetas Táctiles (2x2)
+    card_col1, card_col2 = st.columns(2)
+    with card_col1:
+        st.button(
+            "📋 Listado General", 
+            key="btn_sub_list", 
+            use_container_width=True, 
+            type="primary" if st.session_state['subseccion_clientes'] == "📋 Listado General" else "secondary",
+            on_click=ir_a_subseccion_clientes, 
+            args=("📋 Listado General",)
+        )
+        st.button(
+            "✏️ Editar / Eliminar", 
+            key="btn_sub_edit", 
+            use_container_width=True, 
+            type="primary" if st.session_state['subseccion_clientes'] == "✏️ Editar / Eliminar" else "secondary",
+            on_click=ir_a_subseccion_clientes, 
+            args=("✏️ Editar / Eliminar",)
+        )
 
-    with tab1:
+    with card_col2:
+        st.button(
+            "➕ Agregar Cliente", 
+            key="btn_sub_add", 
+            use_container_width=True, 
+            type="primary" if st.session_state['subseccion_clientes'] == "➕ Agregar Cliente" else "secondary",
+            on_click=ir_a_subseccion_clientes, 
+            args=("➕ Agregar Cliente",)
+        )
+        st.button(
+            "📋 Cuentas por Cobrar", 
+            key="btn_sub_cxc", 
+            use_container_width=True, 
+            type="primary" if st.session_state['subseccion_clientes'] == "📋 Cuentas por Cobrar" else "secondary",
+            on_click=ir_a_subseccion_clientes, 
+            args=("📋 Cuentas por Cobrar",)
+        )
+
+    st.divider()
+
+    # Contenido según la tarjeta seleccionada
+    submenu = st.session_state['subseccion_clientes']
+
+    if submenu == "📋 Listado General":
+        st.subheader("📋 Listado General de Clientes")
         conn = conectar_db()
         df_cli = pd.read_sql_query("SELECT id AS 'ID', nombre AS 'Nombre', telefono AS 'Teléfono' FROM clientes", conn)
         conn.close()
@@ -345,7 +394,8 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
         else:
             st.info("No hay clientes registrados aún.")
 
-    with tab2:
+    elif submenu == "➕ Agregar Cliente":
+        st.subheader("➕ Agregar Nuevo Cliente")
         with st.form("form_cliente"):
             nombre_cliente = st.text_input("Nombre Completo del Cliente")
             telefono_cliente = st.text_input("Número de Teléfono / WhatsApp")
@@ -361,8 +411,8 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                     st.success(f"✅ Cliente '{nombre_cliente}' agregado correctamente.")
                     st.rerun()
 
-    with tab3:
-        st.subheader("Editar o Eliminar Cliente Existente")
+    elif submenu == "✏️ Editar / Eliminar":
+        st.subheader("✏️ Editar o Eliminar Cliente Existente")
         conn = conectar_db()
         df_cli_edit = pd.read_sql_query("SELECT * FROM clientes", conn)
         conn.close()
@@ -408,8 +458,8 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
         else:
             st.info("No hay clientes disponibles para editar.")
 
-    with tab4:
-        st.subheader("Listado de Cuentas por Cobrar por Cliente")
+    elif submenu == "📋 Cuentas por Cobrar":
+        st.subheader("📋 Listado de Cuentas por Cobrar por Cliente")
         conn = conectar_db()
         df_deudas_resumen = pd.read_sql_query('''
             SELECT c.id AS cliente_id,
@@ -588,10 +638,9 @@ elif menu == "📈 Reportes y Métricas":
     conn.close()
 
     if not df_ventas.empty:
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         col1.metric("Ingresos Totales", f"${df_ventas['Ingreso Total ($)'].sum():,.2f}")
         col2.metric("Ganancia Neta Total", f"${df_ventas['Ganancia ($)'].sum():,.2f}")
-        col3.metric("Unidades Vendidas", f"{df_ventas['Cantidad'].sum()}")
         st.divider()
         st.dataframe(df_ventas, use_container_width=True)
     else:
