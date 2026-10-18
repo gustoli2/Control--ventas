@@ -343,6 +343,9 @@ if menu == "🏠 Inicio / Dashboard":
     with c2:
         st.button("👥  Gestión de Clientes", key="btn_deu", use_container_width=True, on_click=ir_a_seccion, args=("👥 Clientes y Cuentas por Cobrar",))
 
+    # --- TARJETA DE ACCESO RÁPIDO AL CALENDARIO ---
+    st.button("📅  Calendario Anual de Ventas", key="btn_cal_home", use_container_width=True, on_click=ir_a_seccion, args=("📅 Calendario Anual de Ventas",))
+
     st.divider()
 
     st.markdown('<div class="quick-access-title">📊 Estadísticas del Mes</div>', unsafe_allow_html=True)
@@ -843,7 +846,7 @@ elif menu == "📅 Calendario Anual de Ventas":
 
     col_anio, col_mes = st.columns(2)
     with col_anio:
-        anio_sel = st.selectbox("Selecciona el Año", list(range(2024, 2031)), index=2) # 2026 por defecto
+        anio_sel = st.selectbox("Selecciona el Año", list(range(2024, 2031)), index=2)
     with col_mes:
         meses_nombres = {
             1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 
@@ -855,7 +858,6 @@ elif menu == "📅 Calendario Anual de Ventas":
 
     st.markdown(f'<div class="sub-header-yellow">📊 Resumen diario de {mes_sel_nombre} {anio_sel}</div>', unsafe_allow_html=True)
 
-    # Consultar ventas del mes seleccionado
     mes_str = f"{anio_sel}-{mes_sel:02d}"
     conn = conectar_db()
     df_ventas_mes = pd.read_sql_query(f'''
@@ -867,22 +869,18 @@ elif menu == "📅 Calendario Anual de Ventas":
     ''', conn)
     conn.close()
 
-    # Procesar totales por día
     ventas_por_dia = {}
     if not df_ventas_mes.empty:
         df_ventas_mes['dia'] = pd.to_datetime(df_ventas_mes['fecha']).dt.day
         ventas_por_dia = df_ventas_mes.groupby('dia')['ingreso'].sum().to_dict()
 
-    # Generar matriz del calendario del mes
     cal = calendar.monthcalendar(anio_sel, mes_sel)
     dias_semana = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
-    # Mostrar cabecera de días de la semana
     cols_dias = st.columns(7)
     for i, d_nombre in enumerate(dias_semana):
         cols_dias[i].markdown(f"<div style='text-align: center; font-weight: bold; color: #444;'>{d_nombre}</div>", unsafe_allow_html=True)
 
-    # Renderizar semanas del mes
     for semana in cal:
         cols_semana = st.columns(7)
         for i, dia in enumerate(semana):
@@ -912,7 +910,6 @@ elif menu == "📅 Calendario Anual de Ventas":
     st.divider()
     st.markdown('<div class="sub-header-yellow">🔍 Consultar Detalle de un Día Específico</div>', unsafe_allow_html=True)
     
-    # Selector de día exacto para ver el detalle de ventas
     dias_del_mes = list(range(1, calendar.monthrange(anio_sel, mes_sel)[1] + 1))
     dia_elegido = st.selectbox("Selecciona el día para ver las ventas detalladas", dias_del_mes, index=datetime.now().day - 1 if datetime.now().month == mes_sel and datetime.now().year == anio_sel else 0)
 
