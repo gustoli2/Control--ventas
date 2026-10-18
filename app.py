@@ -163,7 +163,7 @@ def inicializar_db():
 # Inicializar DB
 inicializar_db()
 
-# --- NAVEGACIÓN EN EL MENÚ LATERAL O ENCABEZADO ---
+# --- NAVEGACIÓN EN EL MENÚ LATERAL ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=60)
 st.sidebar.title("Navegación")
 menu = st.sidebar.radio("Ir a:", ["🏠 Inicio / Dashboard", "🛒 Registrar Venta", "👥 Clientes y Deudas", "📦 Productos e Inventario", "📈 Reportes y Métricas"])
@@ -225,13 +225,6 @@ if menu == "🏠 Inicio / Dashboard":
             </div>
         </div>
     """, unsafe_allow_html=True)
-    
-    # Botón directo para registrar venta rápida
-    col_btn, _ = st.columns([1, 0.01])
-    with col_btn:
-        if st.button("📷 Registrar Venta Rápida", type="primary", use_container_width=True):
-            st.session_state['ir_a_venta'] = True
-            st.rerun()
 
     # Sección "Descubre todo lo que puedes hacer"
     st.markdown('<div class="quick-access-title">Descubre todo lo que puedes hacer</div>', unsafe_allow_html=True)
@@ -490,4 +483,9 @@ elif menu == "📈 Reportes y Métricas":
         col1, col2, col3 = st.columns(3)
         col1.metric("Ingresos Totales", f"${df_ventas['Ingreso Total ($)'].sum():,.2f}")
         col2.metric("Ganancia Neta Total", f"${df_ventas['Ganancia ($)'].sum():,.2f}")
-        col3.metric("Unidades Vendidas", f"{df_ventas['Cantidad'].sum()}
+        col3.metric("Unidades Vendidas", f"{df_ventas['Cantidad'].sum()}")
+        st.divider()
+        st.dataframe(df_ventas, use_container_width=True)
+    else:
+        st.info("Aún no hay ventas registradas para generar reportes.")
+                                    
