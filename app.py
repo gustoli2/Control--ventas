@@ -4,6 +4,8 @@ import pandas as pd
 import requests
 import urllib.parse
 from datetime import datetime, date
+import os
+from PIL import Image, ImageDraw, ImageFont
 
 # Configuración de la página
 st.set_page_config(
@@ -24,7 +26,7 @@ if 'subseccion_inventario' not in st.session_state:
     st.session_state['subseccion_inventario'] = "📋 Listado de Productos"
 
 # --- FUNCIÓN PARA OBTENER LA TASA BCV EN TIEMPO REAL ---
-@st.cache_data(ttl=3600)  # Guarda la tasa en caché durante 1 hora
+@st.cache_data(ttl=3600)
 def obtener_tasa_bcv():
     try:
         url = "https://ve.dolarapi.com/v1/dolares/oficial"
@@ -35,7 +37,6 @@ def obtener_tasa_bcv():
     except Exception:
         pass
     
-    # Fallback API alternativa
     try:
         url_alt = "https://pydolarvenezuela-api.vercel.app/api/v1/dollar?page=bcv"
         response_alt = requests.get(url_alt, timeout=5)
@@ -45,7 +46,65 @@ def obtener_tasa_bcv():
     except Exception:
         pass
 
-    return 880.12  # Valor de respaldo predeterminado si falla la conexión
+    return 880.12
+
+# --- FUNCIÓN PARA GENERAR LA TARJETA DE COBRO EN IMAGEN ---
+def generar_imagen_cobro(nombre_cliente, pendiente, neto, abonado, cant_pagos, fecha_antigua):
+    # Crear lienzo limpio de 800x800 px con fondo blanco
+    img = Image.new("RGB", (800, 850), color="#FFFFFF")
+    draw = ImageDraw.Draw(img)
+    
+    # Intentar cargar fuentes estándar del sistema, si no, usar por defecto
+    try:
+        font_titulo = ImageFont.truetype("arial.ttf", 36)
+        font_sub = ImageFont.truetype("arial.ttf", 28)
+        font_texto = ImageFont.truetype("arial.ttf", 32)
+    except:
+        font_titulo = ImageFont.load_default()
+        font_sub = ImageFont.load_default()
+        font_texto = ImageFont.load_default()
+
+    # Dibujar cabecera decorativa estilo Olinuts
+    draw.rectangle([(0, 0), (800, 180)], fill="#3F5963")
+    draw.text((400, 70), "Olinuts", fill="#FFDE59", font=font_titulo, anchor="mm")
+    draw.text((400, 120), f"Estado de Cuenta: {nombre_cliente}", fill="#FFFFFF", font=font_sub, anchor="mm")
+
+    # Formatear fecha legible (Ej: 06 oct 2026)
+    try:
+        dt = datetime.strptime(fecha_antigua.split()[0], "%Y-%m-%d")
+        meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+        fecha_formateada = f"{dt.day:02d} {meses[dt.month-1]} {dt.year}"
+    except:
+        fecha_formateada = fecha_antigua
+
+    # Líneas de información financiera
+    y_pos = 260
+    
+    draw.text((100, y_pos), "Pendiente:", fill="#333333", font=font_texto)
+    draw.text((700, y_pos), f"${pendiente:,.2f}", fill="#E53935", font=font_texto, anchor="rt")
+    y_pos += 80
+
+    draw.text((100, y_pos), "Deuda neta:", fill="#333333", font=font_texto)
+    draw.text((700, y_pos), f"${neto:,.2f}", fill="#E53935", font=font_texto, anchor="rt")
+    y_pos += 80
+
+    draw.text((100, y_pos), "Abonado:", fill="#333333", font=font_texto)
+    draw.text((700, y_pos), f"${abonado:,.2f}", fill="#00A86B", font=font_texto, anchor="rt")
+    y_pos += 100
+
+    # Línea divisoria
+    draw.line([(100, y_pos), (700, y_pos)], fill="#EEEEEE", width=3)
+    y_pos += 60
+
+    # Resumen de pagos
+    draw.text((400, y_pos), f"Tienes {cant_pagos} pago(s) pendiente(s)", fill="#222222", font=font_sub, anchor="mm")
+    y_pos += 60
+    draw.text((400, y_pos), f"desde el día {fecha_formateada}", fill="#555555", font=font_sub, anchor="mm")
+
+    # Guardar imagen en archivo temporal local
+    ruta_imagen = "recibo_cobro.png"
+    img.save(ruta_imagen)
+    return ruta_imagen
 
 # --- FUNCIONES DE NAVEGACIÓN ---
 def ir_a_seccion(nombre_seccion):
@@ -591,6 +650,32 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
             deuda_maxima_bs = deuda_maxima * tasa_oficial
 
+            # --- CONSULTAR DETALLES ADICIONALES DEL CLIENTE (Fecha más antigua y cantidad de deudas) ---
+            conn = conectar_db()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT MIN(fecha), COUNT(id) FROM ventas 
+                WHERE cliente_id = ? AND estado_pago = 'Pendiente' AND saldo_pendiente > 0
+            ''', (cliente_id_sel,))
+            res_fechas = cursor.fetchone()
+            conn.close()
+
+            fecha_mas_antigua = res_fechas[0] if res_fechas and res_fechas[0] else str(date.today())
+            cant_pagos_pendientes = res_fechas[1] if res_fechas else 1
+
+            # Generar la imagen del recibo de cobro personalizada
+            ruta_img_generada = generar_imagen_cobro(
+                nombre_cliente=cliente_info['Cliente'],
+                pendiente=deuda_maxima,
+                neto=deuda_maxima,
+                abonado=0.0,
+                cant_pagos=cant_pagos_pendientes,
+                fecha_antigua=fecha_mas_antigua
+            )
+
+            # Mostrar imagen en pantalla previa
+            st.image(ruta_img_generada, caption="Vista previa de la tarjeta de cobro generada", width=350)
+
             # --- BOTÓN DE ENVIAR WHATSAPP ---
             tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
             if tel_bruto.startswith("0"):
@@ -624,13 +709,15 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                         text-align: center; 
                         font-weight: bold; 
                         font-size: 16px;
-                        margin-top: 5px;
+                        margin-top: 10px;
                         margin-bottom: 20px;
                         box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);">
                         📲 Enviar Recordatorio por WhatsApp a {m_nombre}
                     </div>
                 </a>
             ''', unsafe_allow_html=True)
+            
+            st.info("💡 **Nota:** La imagen de cobro se ha generado arriba. Si deseas enviarla junto con el mensaje, puedes guardarla en tu teléfono o galería y adjuntarla en el chat de WhatsApp al presionar el botón verde.")
 
             col_ab1, col_ab2 = st.columns(2)
             with col_ab1:
