@@ -130,6 +130,7 @@ def inicializar_db():
             costo_unitario REAL NOT NULL,
             ganancia_total REAL NOT NULL,
             estado_pago TEXT DEFAULT 'Pagado',
+            saldo_pendiente REAL DEFAULT 0.0,
             fecha TEXT NOT NULL,
             FOREIGN KEY (producto_id) REFERENCES productos(id),
             FOREIGN KEY (cliente_id) REFERENCES clientes(id)
@@ -142,6 +143,9 @@ def inicializar_db():
         cursor.execute("ALTER TABLE ventas ADD COLUMN cliente_id INTEGER DEFAULT 1")
     if 'estado_pago' not in columnas:
         cursor.execute("ALTER TABLE ventas ADD COLUMN estado_pago TEXT DEFAULT 'Pagado'")
+    if 'saldo_pendiente' not in columnas:
+        cursor.execute("ALTER TABLE ventas ADD COLUMN saldo_pendiente REAL DEFAULT 0.0")
+        cursor.execute("UPDATE ventas SET saldo_pendiente = (cantidad * precio_unitario) WHERE estado_pago = 'Pendiente'")
 
     conn.commit()
     conn.close()
@@ -286,6 +290,9 @@ elif menu == "🛒 Registrar Venta":
             horizontal=True
         )
         estado_pago_val = "Pagado" if "Pagado" in tipo_pago else "Pendiente"
+        
+        monto_total_venta = prod_data['precio_venta'] * cantidad
+        saldo_inicial = 0.0 if estado_pago_val == "Pagado" else monto_total_venta
 
         if prod_data['stock'] <= 0:
             st.error("❌ Producto agotado. Actualiza el stock en el inventario.")
@@ -296,9 +303,9 @@ elif menu == "🛒 Registrar Venta":
                 fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
                 cursor.execute('''
-                    INSERT INTO ventas (producto_id, cliente_id, cantidad, precio_unitario, costo_unitario, ganancia_total, estado_pago, fecha)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (prod_data['id'], cliente_data['id'], cantidad, prod_data['precio_venta'], prod_data['costo_unitario'], ganancia_estimada, estado_pago_val, fecha_actual))
+                    INSERT INTO ventas (producto_id, cliente_id, cantidad, precio_unitario, costo_unitario, ganancia_total, estado_pago, saldo_pendiente, fecha)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (prod_data['id'], cliente_data['id'], cantidad, prod_data['precio_venta'], prod_data['costo_unitario'], ganancia_estimada, estado_pago_val, saldo_inicial, fecha_actual))
                 
                 cursor.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cantidad, prod_data['id']))
                 conn.commit()
@@ -394,11 +401,11 @@ elif menu == "👥 Clientes y Deudas":
             SELECT c.id AS cliente_id,
                    c.nombre AS 'Cliente',
                    c.telefono AS 'Teléfono',
-                   SUM(v.cantidad * v.precio_unitario) AS 'Total Deuda ($)',
-                   COUNT(v.id) AS 'Cant. Deudas'
+                   SUM(v.saldo_pendiente) AS 'Saldo Pendiente ($)',
+                   COUNT(v.id) AS 'Cant. Compras'
             FROM ventas v
             JOIN clientes c ON v.cliente_id = c.id
-            WHERE v.estado_pago = 'Pendiente'
+            WHERE v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
             GROUP BY c.id, c.nombre, c.telefono
         ''', conn)
         conn.close()
@@ -406,25 +413,62 @@ elif menu == "👥 Clientes y Deudas":
         if df_deudas_resumen.empty:
             st.success("🎉 ¡No hay deudas pendientes en este momento!")
         else:
-            total_general = df_deudas_resumen['Total Deuda ($)'].sum()
+            total_general = df_deudas_resumen['Saldo Pendiente ($)'].sum()
             st.metric("Total General en Deudas", f"${total_general:,.2f}")
             
-            df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Deudas', 'Total Deuda ($)']]
+            df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Compras', 'Saldo Pendiente ($)']]
             st.dataframe(df_mostrar, use_container_width=True)
             
-            st.subheader("Liquidar Deuda de un Cliente")
+            st.subheader("💵 Registrar Abono o Pago")
             
-            opciones_clientes_deuda = {f"{row['Cliente']} (Deuda: ${row['Total Deuda ($)']:,.2f})": row['cliente_id'] for _, row in df_deudas_resumen.iterrows()}
-            cliente_a_liquidar_str = st.selectbox("Selecciona el Cliente a Pagar", list(opciones_clientes_deuda.keys()))
-            cliente_id_sel = opciones_clientes_deuda[cliente_a_liquidar_str]
+            opciones_clientes_deuda = {f"{row['Cliente']} (Deuda Total: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_resumen.iterrows()}
+            cliente_a_liquidar_str = st.selectbox("Selecciona el Cliente", list(opciones_clientes_deuda.keys()))
+            cliente_info = opciones_clientes_deuda[cliente_a_liquidar_str]
+            cliente_id_sel = cliente_info['cliente_id']
+            deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
+
+            col_ab1, col_ab2 = st.columns(2)
+            with col_ab1:
+                monto_abono = st.number_input("Monto a Abonar ($)", min_value=0.01, max_value=deuda_maxima, value=deuda_maxima, step=0.5, format="%.2f")
             
-            if st.button("✅ Liquidar Deuda del Cliente", type="primary"):
+            with col_ab2:
+                st.write("")
+                st.write("")
+                btn_abonar = st.button("💰 Registrar Abono / Pago", type="primary", use_container_width=True)
+
+            if btn_abonar:
                 conn = conectar_db()
                 cursor = conn.cursor()
-                cursor.execute("UPDATE ventas SET estado_pago = 'Pagado' WHERE cliente_id = ? AND estado_pago = 'Pendiente'", (cliente_id_sel,))
+                
+                # Obtener todas las ventas pendientes del cliente ordenadas por fecha (más antiguas primero)
+                cursor.execute('''
+                    SELECT id, saldo_pendiente 
+                    FROM ventas 
+                    WHERE cliente_id = ? AND estado_pago = 'Pendiente' AND saldo_pendiente > 0
+                    ORDER BY fecha ASC
+                ''', (cliente_id_sel,))
+                
+                ventas_pendientes = cursor.fetchall()
+                abono_restante = monto_abono
+
+                for v_id, s_pendiente in ventas_pendientes:
+                    if abono_restante <= 0:
+                        break
+                    
+                    if abono_restante >= s_pendiente:
+                        # Se paga esta venta completamente
+                        abono_restante -= s_pendiente
+                        cursor.execute("UPDATE ventas SET saldo_pendiente = 0.0, estado_pago = 'Pagado' WHERE id = ?", (v_id,))
+                    else:
+                        # Abono parcial a esta venta
+                        nuevo_saldo = s_pendiente - abono_restante
+                        cursor.execute("UPDATE ventas SET saldo_pendiente = ? WHERE id = ?", (nuevo_saldo, v_id))
+                        abono_restante = 0.0
+
                 conn.commit()
                 conn.close()
-                st.success("🎉 ¡Las deudas de este cliente han sido liquidadas exitosamente!")
+                st.balloons()
+                st.success(f"🎉 ¡Abono de ${monto_abono:,.2f} registrado exitosamente para {cliente_info['Cliente']}!")
                 st.rerun()
 
 # ---------------------------------------------------------
@@ -515,6 +559,7 @@ elif menu == "📈 Reportes y Métricas":
         SELECT v.id AS 'ID Venta', p.nombre AS 'Producto', c.nombre AS 'Cliente',
                v.cantidad AS 'Cantidad', v.precio_unitario AS 'Precio Unit. ($)', 
                (v.cantidad * v.precio_unitario) AS 'Ingreso Total ($)',
+               v.saldo_pendiente AS 'Saldo Pendiente ($)',
                v.ganancia_total AS 'Ganancia ($)', v.estado_pago AS 'Estado de Pago', v.fecha AS 'Fecha'
         FROM ventas v
         JOIN productos p ON v.producto_id = p.id
