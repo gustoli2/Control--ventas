@@ -60,7 +60,7 @@ def ir_a_subseccion_clientes(nombre_subseccion):
 def ir_a_subseccion_inventario(nombre_subseccion):
     st.session_state['subseccion_inventario'] = nombre_subseccion
 
-# --- ESTILOS CSS PERSONALIZADOS (FUENTE MÁS GRANDE) ---
+# --- ESTILOS CSS PERSONALIZADOS ---
 st.markdown("""
 <style>
     /* Fuente global general */
@@ -406,7 +406,7 @@ if menu == "🏠 Inicio / Dashboard":
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# OPCIÓN 1: REGISTRAR VENTA (CARRITO MULTIPRODUCTO)
+# OPCIÓN 1: REGISTRAR VENTA (CARRITO MULTIPRODUCTO CON BÚSQUEDA)
 # ---------------------------------------------------------
 elif menu == "🛒 Registrar Venta":
     col_header, col_home = st.columns([3, 1])
@@ -430,11 +430,19 @@ elif menu == "🛒 Registrar Venta":
 
         with col_c:
             st.markdown('<div class="sub-header-yellow">👤 Cliente</div>', unsafe_allow_html=True)
+            busqueda_cliente_rv = st.text_input("🔍 Buscar Cliente...", placeholder="Escribe el nombre del cliente", key="busq_cli_rv")
+            
+            # Filtrar clientes por búsqueda
+            if busqueda_cliente_rv.strip() != "":
+                df_clientes_filt = df_clientes[df_clientes['nombre'].str.contains(busqueda_cliente_rv, case=False, na=False)]
+            else:
+                df_clientes_filt = df_clientes
+
             opciones_clientes = {"➕ ¡Agregar Nuevo Cliente!": None}
-            for _, row in df_clientes.iterrows():
+            for _, row in df_clientes_filt.iterrows():
                 opciones_clientes[f"{row['nombre']} ({row['telefono']})"] = row
                 
-            cliente_seleccionado_str = st.selectbox("Selecciona un Cliente", list(opciones_clientes.keys()))
+            cliente_seleccionado_str = st.selectbox("Selecciona un Cliente", list(opciones_clientes.keys()), key="sb_cli_rv")
             
             if cliente_seleccionado_str == "➕ ¡Agregar Nuevo Cliente!":
                 with st.expander("👤 Registrar Nuevo Cliente Rápido", expanded=True):
@@ -459,13 +467,17 @@ elif menu == "🛒 Registrar Venta":
 
         st.markdown('<div class="sub-header-yellow">📦 Agregar Productos al Pedido</div>', unsafe_allow_html=True)
         
+        busqueda_prod_rv = st.text_input("🔍 Buscar Producto...", placeholder="Escribe para buscar un producto...", key="busq_prod_rv")
+        
         df_prods_disponibles = df_prods[df_prods['stock'] > 0]
+        if busqueda_prod_rv.strip() != "":
+            df_prods_disponibles = df_prods_disponibles[df_prods_disponibles['nombre'].str.contains(busqueda_prod_rv, case=False, na=False)]
         
         if df_prods_disponibles.empty:
-            st.error("❌ No hay productos con stock disponible para vender.")
+            st.error("❌ No se encontraron productos con stock disponible que coincidan.")
         else:
             opciones_productos = {f"{row['nombre']} (Stock: {row['stock']})": row for _, row in df_prods_disponibles.iterrows()}
-            prod_seleccionado_str = st.selectbox("Selecciona un Producto", list(opciones_productos.keys()))
+            prod_seleccionado_str = st.selectbox("Selecciona un Producto", list(opciones_productos.keys()), key="sb_prod_rv")
             prod_data = opciones_productos[prod_seleccionado_str]
 
             cantidad_ya_en_carrito = sum(item['cantidad'] for item in st.session_state['carrito_ventas'] if item['producto_id'] == prod_data['id'])
@@ -622,6 +634,9 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
         conn.close()
         
         if not df_cli.empty:
+            busq_cli_gen = st.text_input("🔍 Buscar Cliente en la lista...", placeholder="Escribe el nombre a buscar...")
+            if busq_cli_gen.strip() != "":
+                df_cli = df_cli[df_cli['Nombre'].str.contains(busq_cli_gen, case=False, na=False)]
             st.dataframe(df_cli, use_container_width=True)
         else:
             st.info("No hay clientes registrados aún.")
@@ -650,43 +665,53 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
         conn.close()
 
         if not df_cli_edit.empty:
-            dict_cli = {f"{row['nombre']} (ID: {row['id']})": row for _, row in df_cli_edit.iterrows()}
-            cli_edit_str = st.selectbox("Selecciona el cliente a modificar", list(dict_cli.keys()))
-            cli_sel = dict_cli[cli_edit_str]
+            busq_cli_ed = st.text_input("🔍 Buscar Cliente por Nombre...", placeholder="Escribe el nombre del cliente que buscas...", key="busq_cli_ed")
+            
+            if busq_cli_ed.strip() != "":
+                df_cli_edit_filt = df_cli_edit[df_cli_edit['nombre'].str.contains(busq_cli_ed, case=False, na=False)]
+            else:
+                df_cli_edit_filt = df_cli_edit
 
-            with st.form("form_editar_cliente_reg"):
-                n_nombre = st.text_input("Nombre del Cliente", value=cli_sel['nombre'])
-                n_telefono = st.text_input("Teléfono / WhatsApp", value=cli_sel['telefono'])
+            if df_cli_edit_filt.empty:
+                st.warning("No se encontraron clientes que coincidan con la búsqueda.")
+            else:
+                dict_cli = {f"{row['nombre']} (ID: {row['id']})": row for _, row in df_cli_edit_filt.iterrows()}
+                cli_edit_str = st.selectbox("Selecciona el cliente a modificar", list(dict_cli.keys()))
+                cli_sel = dict_cli[cli_edit_str]
 
-                col_b1, col_b2 = st.columns(2)
-                with col_b1: act_cli = st.form_submit_button("💾 Actualizar Cambios", type="primary")
-                with col_b2: elim_cli = st.form_submit_button("🗑️ Eliminar Cliente")
+                with st.form("form_editar_cliente_reg"):
+                    n_nombre = st.text_input("Nombre del Cliente", value=cli_sel['nombre'])
+                    n_telefono = st.text_input("Teléfono / WhatsApp", value=cli_sel['telefono'])
 
-                if act_cli:
-                    if n_nombre.strip() == "":
-                        st.error("El nombre no puede estar vacío.")
-                    else:
-                        conn = conectar_db()
-                        cursor = conn.cursor()
-                        cursor.execute("UPDATE clientes SET nombre=?, telefono=? WHERE id=?", 
-                                       (n_nombre, n_telefono if n_telefono.strip() else 'Sin teléfono', cli_sel['id']))
-                        conn.commit()
-                        conn.close()
-                        st.success("✅ Cliente actualizado exitosamente.")
-                        st.rerun()
+                    col_b1, col_b2 = st.columns(2)
+                    with col_b1: act_cli = st.form_submit_button("💾 Actualizar Cambios", type="primary")
+                    with col_b2: elim_cli = st.form_submit_button("🗑️ Eliminar Cliente")
 
-                if elim_cli:
-                    if cli_sel['id'] == 1:
-                        st.error("❌ No se puede eliminar el cliente general/mostrador por defecto.")
-                    else:
-                        conn = conectar_db()
-                        cursor = conn.cursor()
-                        cursor.execute("UPDATE ventas SET cliente_id = 1 WHERE cliente_id = ?", (cli_sel['id'],))
-                        cursor.execute("DELETE FROM clientes WHERE id=?", (cli_sel['id'],))
-                        conn.commit()
-                        conn.close()
-                        st.warning("🗑️ Cliente eliminado correctamente.")
-                        st.rerun()
+                    if act_cli:
+                        if n_nombre.strip() == "":
+                            st.error("El nombre no puede estar vacío.")
+                        else:
+                            conn = conectar_db()
+                            cursor = conn.cursor()
+                            cursor.execute("UPDATE clientes SET nombre=?, telefono=? WHERE id=?", 
+                                           (n_nombre, n_telefono if n_telefono.strip() else 'Sin teléfono', cli_sel['id']))
+                            conn.commit()
+                            conn.close()
+                            st.success("✅ Cliente actualizado exitosamente.")
+                            st.rerun()
+
+                    if elim_cli:
+                        if cli_sel['id'] == 1:
+                            st.error("❌ No se puede eliminar el cliente general/mostrador por defecto.")
+                        else:
+                            conn = conectar_db()
+                            cursor = conn.cursor()
+                            cursor.execute("UPDATE ventas SET cliente_id = 1 WHERE cliente_id = ?", (cli_sel['id'],))
+                            cursor.execute("DELETE FROM clientes WHERE id=?", (cli_sel['id'],))
+                            conn.commit()
+                            conn.close()
+                            st.warning("🗑️ Cliente eliminado correctamente.")
+                            st.rerun()
         else:
             st.info("No hay clientes disponibles para editar.")
 
@@ -716,119 +741,129 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             
             st.markdown('<div class="sub-header-yellow">💵 Registrar Abono o Pago / Notificar por WhatsApp</div>', unsafe_allow_html=True)
             
-            opciones_clientes_deuda = {f"{row['Cliente']} (Monto Pendiente: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_resumen.iterrows()}
-            cliente_a_liquidar_str = st.selectbox("Selecciona el Cliente", list(opciones_clientes_deuda.keys()))
-            cliente_info = opciones_clientes_deuda[cliente_a_liquidar_str]
-            cliente_id_sel = cliente_info['cliente_id']
-            deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
-            deuda_maxima_bs = deuda_maxima * tasa_oficial
-
-            tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
-            if tel_bruto.startswith("0"):
-                num_wa = "58" + tel_bruto[1:]
-            elif tel_bruto.startswith("4"):
-                num_wa = "58" + tel_bruto
+            busq_cxc = st.text_input("🔍 Buscar Cliente Deudor...", placeholder="Escribe el nombre del cliente...", key="busq_cxc")
+            
+            if busq_cxc.strip() != "":
+                df_deudas_filt = df_deudas_resumen[df_deudas_resumen['Cliente'].str.contains(busq_cxc, case=False, na=False)]
             else:
-                num_wa = tel_bruto
+                df_deudas_filt = df_deudas_resumen
 
-            m_nombre = cliente_info['Cliente']
-            m_monto_usd = f"${deuda_maxima:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
-            m_monto_bs = f"Bs. {deuda_maxima_bs:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+            if df_deudas_filt.empty:
+                st.warning("No se encontraron deudores que coincidan con la búsqueda.")
+            else:
+                opciones_clientes_deuda = {f"{row['Cliente']} (Monto Pendiente: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_filt.iterrows()}
+                cliente_a_liquidar_str = st.selectbox("Selecciona el Cliente", list(opciones_clientes_deuda.keys()))
+                cliente_info = opciones_clientes_deuda[cliente_a_liquidar_str]
+                cliente_id_sel = cliente_info['cliente_id']
+                deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
+                deuda_maxima_bs = deuda_maxima * tasa_oficial
 
-            texto_msj = (
-                f"Hola {m_nombre},\n\n"
-                f"Queremos recordarte que tienes pagos pendientes de {m_monto_usd} ({m_monto_bs}) con Olinuts. "
-                f"Nada mejor que llevar tus cuentas al día, por eso no olvides realizar los pagos. "
-                f"¡Qué tengas un feliz día!"
-            )
-            
-            texto_encoded = urllib.parse.quote(texto_msj)
-            link_wa = f"https://wa.me/{num_wa}?text={texto_encoded}"
+                tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
+                if tel_bruto.startswith("0"):
+                    num_wa = "58" + tel_bruto[1:]
+                elif tel_bruto.startswith("4"):
+                    num_wa = "58" + tel_bruto
+                else:
+                    num_wa = tel_bruto
 
-            st.markdown(f'''
-                <a href="{link_wa}" target="_blank" style="text-decoration: none;">
-                    <div style="
-                        background-color: #25D366; 
-                        color: white; 
-                        padding: 14px 20px; 
-                        border-radius: 12px; 
-                        text-align: center; 
-                        font-weight: bold; 
-                        font-size: 18px;
-                        margin-top: 10px;
-                        margin-bottom: 20px;
-                        box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);">
-                        📲 Enviar Recordatorio por WhatsApp a {m_nombre}
-                    </div>
-                </a>
-            ''', unsafe_allow_html=True)
+                m_nombre = cliente_info['Cliente']
+                m_monto_usd = f"${deuda_maxima:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+                m_monto_bs = f"Bs. {deuda_maxima_bs:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
 
-            col_ab1, col_ab2 = st.columns(2)
-            with col_ab1:
-                monto_abono = st.number_input("Monto a Abonar ($)", min_value=0.01, max_value=deuda_maxima, value=deuda_maxima, step=0.5, format="%.2f")
-                st.caption(f"Equivalente a: **Bs. {monto_abono * tasa_oficial:,.2f}**")
-            
-            with col_ab2:
-                st.write("")
-                st.write("")
-                btn_abonar = st.button("💰 Registrar Abono / Pago", type="primary", use_container_width=True)
-
-            if btn_abonar:
-                conn = conectar_db()
-                cursor = conn.cursor()
+                texto_msj = (
+                    f"Hola {m_nombre},\n\n"
+                    f"Queremos recordarte que tienes pagos pendientes de {m_monto_usd} ({m_monto_bs}) con Olinuts. "
+                    f"Nada mejor que llevar tus cuentas al día, por eso no olvides realizar los pagos. "
+                    f"¡Qué tengas un feliz día!"
+                )
                 
-                cursor.execute('''
-                    SELECT id, saldo_pendiente 
-                    FROM ventas 
-                    WHERE cliente_id = ? AND estado_pago = 'Pendiente' AND saldo_pendiente > 0
-                    ORDER BY fecha ASC
-                ''', (cliente_id_sel,))
-                
-                ventas_pendientes = cursor.fetchall()
-                abono_restante = monto_abono
+                texto_encoded = urllib.parse.quote(texto_msj)
+                link_wa = f"https://wa.me/{num_wa}?text={texto_encoded}"
 
-                for v_id, s_pendiente in ventas_pendientes:
-                    if abono_restante <= 0:
-                        break
+                st.markdown(f'''
+                    <a href="{link_wa}" target="_blank" style="text-decoration: none;">
+                        <div style="
+                            background-color: #25D366; 
+                            color: white; 
+                            padding: 14px 20px; 
+                            border-radius: 12px; 
+                            text-align: center; 
+                            font-weight: bold; 
+                            font-size: 18px;
+                            margin-top: 10px;
+                            margin-bottom: 20px;
+                            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);">
+                            📲 Enviar Recordatorio por WhatsApp a {m_nombre}
+                        </div>
+                    </a>
+                ''', unsafe_allow_html=True)
+
+                col_ab1, col_ab2 = st.columns(2)
+                with col_ab1:
+                    monto_abono = st.number_input("Monto a Abonar ($)", min_value=0.01, max_value=deuda_maxima, value=deuda_maxima, step=0.5, format="%.2f")
+                    st.caption(f"Equivalente a: **Bs. {monto_abono * tasa_oficial:,.2f}**")
+                
+                with col_ab2:
+                    st.write("")
+                    st.write("")
+                    btn_abonar = st.button("💰 Registrar Abono / Pago", type="primary", use_container_width=True)
+
+                if btn_abonar:
+                    conn = conectar_db()
+                    cursor = conn.cursor()
                     
-                    if abono_restante >= s_pendiente:
-                        abono_restante -= s_pendiente
-                        cursor.execute("UPDATE ventas SET saldo_pendiente = 0.0, estado_pago = 'Pagado' WHERE id = ?", (v_id,))
-                    else:
-                        nuevo_saldo = s_pendiente - abono_restante
-                        cursor.execute("UPDATE ventas SET saldo_pendiente = ? WHERE id = ?", (nuevo_saldo, v_id))
-                        abono_restante = 0.0
+                    cursor.execute('''
+                        SELECT id, saldo_pendiente 
+                        FROM ventas 
+                        WHERE cliente_id = ? AND estado_pago = 'Pendiente' AND saldo_pendiente > 0
+                        ORDER BY fecha ASC
+                    ''', (cliente_id_sel,))
+                    
+                    ventas_pendientes = cursor.fetchall()
+                    abono_restante = monto_abono
 
-                conn.commit()
-                conn.close()
-                st.balloons()
-                st.success(f"🎉 ¡Abono de ${monto_abono:,.2f} registrado exitosamente para {cliente_info['Cliente']}!")
-                st.rerun()
+                    for v_id, s_pendiente in ventas_pendientes:
+                        if abono_restante <= 0:
+                            break
+                        
+                        if abono_restante >= s_pendiente:
+                            abono_restante -= s_pendiente
+                            cursor.execute("UPDATE ventas SET saldo_pendiente = 0.0, estado_pago = 'Pagado' WHERE id = ?", (v_id,))
+                        else:
+                            nuevo_saldo = s_pendiente - abono_restante
+                            cursor.execute("UPDATE ventas SET saldo_pendiente = ? WHERE id = ?", (nuevo_saldo, v_id))
+                            abono_restante = 0.0
 
-            with st.expander("⚠️ ¿Registraste una deuda por error? Eliminar un registro de deuda"):
-                conn = conectar_db()
-                df_ventas_del = pd.read_sql_query('''
-                    SELECT v.id, p.nombre AS producto, v.cantidad, v.saldo_pendiente, v.fecha, p.id AS producto_id
-                    FROM ventas v
-                    JOIN productos p ON v.producto_id = p.id
-                    WHERE v.cliente_id = ? AND v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
-                ''', conn, params=(cliente_id_sel,))
-                conn.close()
+                    conn.commit()
+                    conn.close()
+                    st.balloons()
+                    st.success(f"🎉 ¡Abono de ${monto_abono:,.2f} registrado exitosamente para {cliente_info['Cliente']}!")
+                    st.rerun()
 
-                if not df_ventas_del.empty:
-                    dict_del = {f"ID Venta #{row['id']} - {row['producto']} ({row['cantidad']} uds) - Pendiente: ${row['saldo_pendiente']:.2f} ({row['fecha']})": row for _, row in df_ventas_del.iterrows()}
-                    venta_del_sel_str = st.selectbox("Selecciona la venta pendiente a borrar", list(dict_del.keys()))
-                    venta_del_info = dict_del[venta_del_sel_str]
+                with st.expander("⚠️ ¿Registraste una deuda por error? Eliminar un registro de deuda"):
+                    conn = conectar_db()
+                    df_ventas_del = pd.read_sql_query('''
+                        SELECT v.id, p.nombre AS producto, v.cantidad, v.saldo_pendiente, v.fecha, p.id AS producto_id
+                        FROM ventas v
+                        JOIN productos p ON v.producto_id = p.id
+                        WHERE v.cliente_id = ? AND v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
+                    ''', conn, params=(cliente_id_sel,))
+                    conn.close()
 
-                    if st.button("🗑️ Eliminar Registro de Deuda", type="primary", use_container_width=True):
-                        conn = conectar_db()
-                        cursor = conn.cursor()
-                        cursor.execute("UPDATE productos SET stock = stock + ? WHERE id = ?", (venta_del_info['cantidad'], venta_del_info['producto_id']))
-                        cursor.execute("DELETE FROM ventas WHERE id = ?", (venta_del_info['id'],))
-                        conn.commit()
-                        conn.close()
-                        st.warning(f"🗑️ Registro de venta #{venta_del_info['id']} eliminado y stock restituido.")
-                        st.rerun()
+                    if not df_ventas_del.empty:
+                        dict_del = {f"ID Venta #{row['id']} - {row['producto']} ({row['cantidad']} uds) - Pendiente: ${row['saldo_pendiente']:.2f} ({row['fecha']})": row for _, row in df_ventas_del.iterrows()}
+                        venta_del_sel_str = st.selectbox("Selecciona la venta pendiente a borrar", list(dict_del.keys()))
+                        venta_del_info = dict_del[venta_del_sel_str]
+
+                        if st.button("🗑️ Eliminar Registro de Deuda", type="primary", use_container_width=True):
+                            conn = conectar_db()
+                            cursor = conn.cursor()
+                            cursor.execute("UPDATE productos SET stock = stock + ? WHERE id = ?", (venta_del_info['cantidad'], venta_del_info['producto_id']))
+                            cursor.execute("DELETE FROM ventas WHERE id = ?", (venta_del_info['id'],))
+                            conn.commit()
+                            conn.close()
+                            st.warning(f"🗑️ Registro de venta #{venta_del_info['id']} eliminado y stock restituido.")
+                            st.rerun()
 
             st.divider()
 
@@ -888,6 +923,9 @@ elif menu == "📦 Productos e Inventario":
         conn.close()
         
         if not df_prods.empty:
+            busq_prod_gen = st.text_input("🔍 Buscar Producto...", placeholder="Escribe para buscar un producto...")
+            if busq_prod_gen.strip() != "":
+                df_prods = df_prods[df_prods['Producto'].str.contains(busq_prod_gen, case=False, na=False)]
             df_prods['Precio (Bs.)'] = df_prods['Precio ($)'] * tasa_oficial
             st.dataframe(df_prods, use_container_width=True)
         else:
@@ -919,38 +957,48 @@ elif menu == "📦 Productos e Inventario":
         conn.close()
 
         if not df_prods_edit.empty:
-            dict_prods = {f"{row['nombre']} (ID: {row['id']})": row for _, row in df_prods_edit.iterrows()}
-            prod_edit_str = st.selectbox("Selecciona el producto a modificar", list(dict_prods.keys()))
-            prod_sel = dict_prods[prod_edit_str]
+            busq_prod_ed = st.text_input("🔍 Buscar Producto por Nombre...", placeholder="Escribe para buscar el producto...", key="busq_prod_ed")
+            
+            if busq_prod_ed.strip() != "":
+                df_prods_edit_filt = df_prods_edit[df_prods_edit['nombre'].str.contains(busq_prod_ed, case=False, na=False)]
+            else:
+                df_prods_edit_filt = df_prods_edit
 
-            with st.form("form_editar"):
-                n_nombre = st.text_input("Nombre", value=prod_sel['nombre'])
-                c1, c2, c3 = st.columns(3)
-                with c1: n_costo = st.number_input("Costo ($)", min_value=0.0, value=float(prod_sel['costo_unitario']), format="%.2f")
-                with c2: n_precio = st.number_input("Precio ($)", min_value=0.0, value=float(prod_sel['precio_venta']), format="%.2f")
-                with c3: n_stock = st.number_input("Stock", min_value=0, value=int(prod_sel['stock']), step=1)
+            if df_prods_edit_filt.empty:
+                st.warning("No se encontraron productos que coincidan con la búsqueda.")
+            else:
+                dict_prods = {f"{row['nombre']} (ID: {row['id']})": row for _, row in df_prods_edit_filt.iterrows()}
+                prod_edit_str = st.selectbox("Selecciona el producto a modificar", list(dict_prods.keys()))
+                prod_sel = dict_prods[prod_edit_str]
 
-                col_b1, col_b2 = st.columns(2)
-                with col_b1: act = st.form_submit_button("💾 Actualizar Cambios", type="primary")
-                with col_b2: elim = st.form_submit_button("🗑️ Eliminar Producto")
+                with st.form("form_editar"):
+                    n_nombre = st.text_input("Nombre", value=prod_sel['nombre'])
+                    c1, c2, c3 = st.columns(3)
+                    with c1: n_costo = st.number_input("Costo ($)", min_value=0.0, value=float(prod_sel['costo_unitario']), format="%.2f")
+                    with c2: n_precio = st.number_input("Precio ($)", min_value=0.0, value=float(prod_sel['precio_venta']), format="%.2f")
+                    with c3: n_stock = st.number_input("Stock", min_value=0, value=int(prod_sel['stock']), step=1)
 
-                if act:
-                    conn = conectar_db()
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE productos SET nombre=?, costo_unitario=?, precio_venta=?, stock=? WHERE id=?", (n_nombre, n_costo, n_precio, n_stock, prod_sel['id']))
-                    conn.commit()
-                    conn.close()
-                    st.success("✅ Producto actualizado.")
-                    st.rerun()
+                    col_b1, col_b2 = st.columns(2)
+                    with col_b1: act = st.form_submit_button("💾 Actualizar Cambios", type="primary")
+                    with col_b2: elim = st.form_submit_button("🗑️ Eliminar Producto")
 
-                if elim:
-                    conn = conectar_db()
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM productos WHERE id=?", (prod_sel['id'],))
-                    conn.commit()
-                    conn.close()
-                    st.warning("🗑️ Producto eliminado.")
-                    st.rerun()
+                    if act:
+                        conn = conectar_db()
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE productos SET nombre=?, costo_unitario=?, precio_venta=?, stock=? WHERE id=?", (n_nombre, n_costo, n_precio, n_stock, prod_sel['id']))
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Producto actualizado.")
+                        st.rerun()
+
+                    if elim:
+                        conn = conectar_db()
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM productos WHERE id=?", (prod_sel['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.warning("🗑️ Producto eliminado.")
+                        st.rerun()
         else:
             st.info("No hay productos disponibles para editar.")
 
