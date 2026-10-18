@@ -432,7 +432,6 @@ elif menu == "🛒 Registrar Venta":
             st.markdown('<div class="sub-header-yellow">👤 Cliente</div>', unsafe_allow_html=True)
             busqueda_cliente_rv = st.text_input("🔍 Buscar Cliente...", placeholder="Escribe el nombre del cliente", key="busq_cli_rv")
             
-            # Filtrar clientes por búsqueda
             if busqueda_cliente_rv.strip() != "":
                 df_clientes_filt = df_clientes[df_clientes['nombre'].str.contains(busqueda_cliente_rv, case=False, na=False)]
             else:
@@ -867,9 +866,40 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             st.divider()
 
-            st.markdown('<div class="sub-header-yellow">📋 Listado de Cuentas por Cobrar por Cliente</div>', unsafe_allow_html=True)
-            df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Compras', 'Saldo Pendiente ($)']]
-            st.dataframe(df_mostrar, use_container_width=True)
+            # --- LISTA DESPLEGABLE CON DETALLE DE PRODUCTOS POR CLIENTE DEUDOR ---
+            st.markdown('<div class="sub-header-yellow">📋 Listado de Cuentas por Cobrar (Toca un cliente para ver el detalle)</div>', unsafe_allow_html=True)
+            
+            conn = conectar_db()
+            for _, row_cli in df_deudas_resumen.iterrows():
+                cli_id = row_cli['cliente_id']
+                cli_nombre = row_cli['Cliente']
+                cli_tel = row_cli['Teléfono']
+                cli_deuda_usd = row_cli['Saldo Pendiente ($)']
+                cli_deuda_bs = cli_deuda_usd * tasa_oficial
+
+                # Título responsivo del desplegable
+                titulo_expander = f"👤 {cli_nombre} | Deuda: ${cli_deuda_usd:,.2f} (~ Bs. {cli_deuda_bs:,.2f}) | 📞 {cli_tel}"
+                
+                with st.expander(titulo_expander):
+                    # Consultar productos comprados a crédito pendientes por este cliente
+                    df_detalles_compras = pd.read_sql_query('''
+                        SELECT p.nombre AS 'Producto',
+                               v.cantidad AS 'Cantidad',
+                               v.precio_unitario AS 'Precio Unit ($)',
+                               v.saldo_pendiente AS 'Pendiente ($)',
+                               v.fecha AS 'Fecha de Compra'
+                        FROM ventas v
+                        JOIN productos p ON v.producto_id = p.id
+                        WHERE v.cliente_id = ? AND v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
+                        ORDER BY v.fecha DESC
+                    ''', conn, params=(cli_id,))
+                    
+                    if not df_detalles_compras.empty:
+                        df_detalles_compras['Pendiente (Bs.)'] = df_detalles_compras['Pendiente ($)'] * tasa_oficial
+                        st.dataframe(df_detalles_compras, use_container_width=True)
+                    else:
+                        st.info("Sin detalles disponibles.")
+            conn.close()
 
 # ---------------------------------------------------------
 # OPCIÓN 3: PRODUCTOS E INVENTARIO
