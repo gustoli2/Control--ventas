@@ -1,6 +1,7 @@
 import sqlite3
 import streamlit as st
 import pandas as pd
+import requests
 from datetime import datetime, date
 
 # Configuración de la página
@@ -20,6 +21,30 @@ if 'subseccion_clientes' not in st.session_state:
 
 if 'subseccion_inventario' not in st.session_state:
     st.session_state['subseccion_inventario'] = "📋 Listado de Productos"
+
+# --- FUNCIÓN PARA OBTENER LA TASA BCV EN TIEMPO REAL ---
+@st.cache_data(ttl=3600)  # Guarda la tasa en caché durante 1 hora para no recargar la página constantemente
+def obtener_tasa_bcv():
+    try:
+        url = "https://ve.dolarapi.com/v1/dolares/oficial"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return float(data.get("promedio", 0.0))
+    except Exception:
+        pass
+    
+    # Fallback API alternativa
+    try:
+        url_alt = "https://pydolarvenezuela-api.vercel.app/api/v1/dollar?page=bcv"
+        response_alt = requests.get(url_alt, timeout=5)
+        if response_alt.status_code == 200:
+            data = response_alt.json()
+            return float(data['monedas']['usd']['promedio'])
+    except Exception:
+        pass
+
+    return 881.07  # Valor de respaldo predeterminado si falla la conexión
 
 # --- FUNCIONES DE NAVEGACIÓN ---
 def ir_a_seccion(nombre_seccion):
@@ -58,6 +83,16 @@ st.markdown("""
         text-overflow: ellipsis;
         margin-bottom: 10px;
         box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.05);
+    }
+    .tasa-card {
+        background-color: #FFF9C4;
+        border: 1px solid #FBC02D;
+        border-radius: 12px;
+        padding: 10px 15px;
+        margin-bottom: 15px;
+        text-align: center;
+        font-weight: bold;
+        color: #333333;
     }
     .header-title {
         font-size: 24px;
@@ -176,9 +211,14 @@ def inicializar_db():
 
 inicializar_db()
 
+# Cargar Tasa BCV
+tasa_bcv_auto = obtener_tasa_bcv()
+
 # --- NAVEGACIÓN EN EL MENÚ LATERAL ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=60)
 st.sidebar.title("OLINUTS")
+
+tasa_oficial = st.sidebar.number_input("💵 Tasa BCV Hoy (Bs/$)", min_value=1.0, value=tasa_bcv_auto, format="%.2f")
 
 opciones_menu = ["🏠 Inicio / Dashboard", "🛒 Registrar Venta", "👥 Clientes y Cuentas por Cobrar", "📦 Productos e Inventario", "📈 Reportes y Métricas"]
 
@@ -198,6 +238,12 @@ if menu == "🏠 Inicio / Dashboard":
             <div class="header-subtitle">Gustavo Oliveira / Propietario</div>
         </div>
     """, unsafe_allow_html=True)
+    
+    st.markdown(f'''
+        <div class="tasa-card">
+            💵 Tasa Oficial BCV: <b>{tasa_oficial:,.2f} Bs/$</b>
+        </div>
+    ''', unsafe_allow_html=True)
     
     fecha_hoy_str = date.today().strftime("%Y-%m-%d")
     
@@ -223,19 +269,25 @@ if menu == "🏠 Inicio / Dashboard":
     costos_hoy = df_ventas_hoy['costo'].sum() if not df_ventas_hoy.empty else 0.0
     balance_hoy = ventas_hoy - costos_hoy
 
+    ventas_hoy_bs = ventas_hoy * tasa_oficial
+    balance_hoy_bs = balance_hoy * tasa_oficial
+    costos_hoy_bs = costos_hoy * tasa_oficial
+
     st.markdown(f"""
         <div class="business-card">
             <div class="card-title">Tu negocio hoy</div>
             <div class="card-amount">${ventas_hoy:,.2f}</div>
-            <div style="font-size: 13px; color: #777; margin-bottom: 15px;">Ventas hoy</div>
+            <div style="font-size: 13px; color: #555; margin-bottom: 15px;">Bs. {ventas_hoy_bs:,.2f}</div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
                 <div>
                     <span style="font-size: 12px; color: #666;">Balance</span><br>
-                    <span class="amount-green">${balance_hoy:,.2f}</span>
+                    <span class="amount-green">${balance_hoy:,.2f}</span><br>
+                    <span style="font-size: 11px; color: #666;">Bs. {balance_hoy_bs:,.2f}</span>
                 </div>
                 <div style="text-align: right;">
                     <span style="font-size: 12px; color: #666;">Costos hoy</span><br>
-                    <span class="amount-red">${costos_hoy:,.2f}</span>
+                    <span class="amount-red">${costos_hoy:,.2f}</span><br>
+                    <span style="font-size: 11px; color: #666;">Bs. {costos_hoy_bs:,.2f}</span>
                 </div>
             </div>
         </div>
@@ -273,7 +325,9 @@ if menu == "🏠 Inicio / Dashboard":
         st.markdown('<div class="stat-card">', unsafe_allow_html=True)
         st.caption("Ganancias del mes")
         ganancias_mes = df_ventas_mes['ganancia_total'].sum() if not df_ventas_mes.empty else 0.0
+        ganancias_mes_bs = ganancias_mes * tasa_oficial
         st.subheader(f"💵 ${ganancias_mes:,.2f}")
+        st.caption(f"Bs. {ganancias_mes_bs:,.2f}")
         st.success("📈 Registro activo")
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -303,14 +357,12 @@ elif menu == "🛒 Registrar Venta":
             prod_data = opciones_productos[prod_seleccionado_str]
 
         with col_cli:
-            # Lista de opciones con la alternativa para agregar un cliente nuevo directamente
             opciones_clientes = {"➕ ¡Agregar Nuevo Cliente!": None}
             for _, row in df_clientes.iterrows():
                 opciones_clientes[f"{row['nombre']} ({row['telefono']})"] = row
                 
             cliente_seleccionado_str = st.selectbox("Selecciona un Cliente", list(opciones_clientes.keys()))
             
-            # Si el usuario elige crear un cliente nuevo rápido
             if cliente_seleccionado_str == "➕ ¡Agregar Nuevo Cliente!":
                 with st.expander("👤 Registrar Nuevo Cliente Rápido", expanded=True):
                     nuevo_nombre = st.text_input("Nombre Completo del Cliente", key="nv_cli_nom")
@@ -334,7 +386,7 @@ elif menu == "🛒 Registrar Venta":
 
         col1, col2 = st.columns(2)
         with col1:
-            st.info(f"**Precio de Venta:** ${prod_data['precio_venta']:.2f}")
+            st.info(f"**Precio de Venta:** ${prod_data['precio_venta']:.2f} (~ Bs. {prod_data['precio_venta']*tasa_oficial:,.2f})")
             st.info(f"**Costo Unitario:** ${prod_data['costo_unitario']:.2f}")
         
         with col2:
@@ -521,7 +573,10 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             st.success("🎉 ¡No hay cuentas por cobrar pendientes en este momento!")
         else:
             total_general = df_deudas_resumen['Saldo Pendiente ($)'].sum()
-            st.metric("Total General por Cobrar", f"${total_general:,.2f}")
+            total_general_bs = total_general * tasa_oficial
+            col_m1, col_m2 = st.columns(2)
+            col_m1.metric("Total USD por Cobrar", f"${total_general:,.2f}")
+            col_m2.metric("Total Bs. por Cobrar", f"Bs. {total_general_bs:,.2f}")
             
             df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Compras', 'Saldo Pendiente ($)']]
             st.dataframe(df_mostrar, use_container_width=True)
@@ -537,6 +592,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             col_ab1, col_ab2 = st.columns(2)
             with col_ab1:
                 monto_abono = st.number_input("Monto a Abonar ($)", min_value=0.01, max_value=deuda_maxima, value=deuda_maxima, step=0.5, format="%.2f")
+                st.caption(f"Equivalente a: **Bs. {monto_abono * tasa_oficial:,.2f}**")
             
             with col_ab2:
                 st.write("")
@@ -627,6 +683,7 @@ elif menu == "📦 Productos e Inventario":
         conn.close()
         
         if not df_prods.empty:
+            df_prods['Precio (Bs.)'] = df_prods['Precio ($)'] * tasa_oficial
             st.dataframe(df_prods, use_container_width=True)
         else:
             st.info("No hay productos registrados aún.")
@@ -717,9 +774,12 @@ elif menu == "📈 Reportes y Métricas":
     conn.close()
 
     if not df_ventas.empty:
+        total_ingresos = df_ventas['Ingreso Total ($)'].sum()
+        total_ganancias = df_ventas['Ganancia ($)'].sum()
+        
         col1, col2 = st.columns(2)
-        col1.metric("Ingresos Totales", f"${df_ventas['Ingreso Total ($)'].sum():,.2f}")
-        col2.metric("Ganancia Neta Total", f"${df_ventas['Ganancia ($)'].sum():,.2f}")
+        col1.metric("Ingresos Totales", f"${total_ingresos:,.2f}", delta=f"Bs. {total_ingresos * tasa_oficial:,.2f}")
+        col2.metric("Ganancia Neta Total", f"${total_ganancias:,.2f}", delta=f"Bs. {total_ganancias * tasa_oficial:,.2f}")
         st.divider()
         st.dataframe(df_ventas, use_container_width=True)
     else:
