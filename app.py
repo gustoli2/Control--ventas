@@ -2,6 +2,7 @@ import sqlite3
 import streamlit as st
 import pandas as pd
 import requests
+import urllib.parse
 from datetime import datetime, date
 
 # Configuración de la página
@@ -581,13 +582,55 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Compras', 'Saldo Pendiente ($)']]
             st.dataframe(df_mostrar, use_container_width=True)
             
-            st.subheader("💵 Registrar Abono o Pago")
+            st.subheader("💵 Registrar Abono o Pago / Notificar por WhatsApp")
             
             opciones_clientes_deuda = {f"{row['Cliente']} (Monto Pendiente: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_resumen.iterrows()}
             cliente_a_liquidar_str = st.selectbox("Selecciona el Cliente", list(opciones_clientes_deuda.keys()))
             cliente_info = opciones_clientes_deuda[cliente_a_liquidar_str]
             cliente_id_sel = cliente_info['cliente_id']
             deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
+            deuda_maxima_bs = deuda_maxima * tasa_oficial
+
+            # --- BOTÓN DE ENVIAR WHATSAPP ---
+            tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
+            if tel_bruto.startswith("0"):
+                num_wa = "58" + tel_bruto[1:]
+            elif tel_bruto.startswith("4"):
+                num_wa = "58" + tel_bruto
+            else:
+                num_wa = tel_bruto
+
+            m_nombre = cliente_info['Cliente']
+            m_monto_usd = f"${deuda_maxima:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+            m_monto_bs = f"Bs. {deuda_maxima_bs:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+
+            texto_msj = (
+                f"Hola {m_nombre},\n\n"
+                f"Queremos recordarte que tienes pagos pendientes de {m_monto_usd} ({m_monto_bs}) con Olinuts. "
+                f"Nada mejor que llevar tus cuentas al día, por eso no olvides realizar los pagos. "
+                f"¡Qué tengas un feliz día!"
+            )
+            
+            texto_encoded = urllib.parse.quote(texto_msj)
+            link_wa = f"https://wa.me/{num_wa}?text={texto_encoded}"
+
+            st.markdown(f'''
+                <a href="{link_wa}" target="_blank" style="text-decoration: none;">
+                    <div style="
+                        background-color: #25D366; 
+                        color: white; 
+                        padding: 12px 20px; 
+                        border-radius: 12px; 
+                        text-align: center; 
+                        font-weight: bold; 
+                        font-size: 16px;
+                        margin-top: 5px;
+                        margin-bottom: 20px;
+                        box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);">
+                        📲 Enviar Recordatorio por WhatsApp a {m_nombre}
+                    </div>
+                </a>
+            ''', unsafe_allow_html=True)
 
             col_ab1, col_ab2 = st.columns(2)
             with col_ab1:
