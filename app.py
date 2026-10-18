@@ -624,7 +624,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             col_m1.metric("Total USD por Cobrar", f"${total_general:,.2f}")
             col_m2.metric("Total Bs. por Cobrar", f"Bs. {total_general_bs:,.2f}")
             
-            # --- SECCIÓN PRIMERO: REGISTRAR ABONO / NOTIFICAR WHATSAPP ---
+            # --- SECCIÓN: REGISTRAR ABONO / NOTIFICAR WHATSAPP ---
             st.markdown('<div class="sub-header-yellow">💵 Registrar Abono o Pago / Notificar por WhatsApp</div>', unsafe_allow_html=True)
             
             opciones_clientes_deuda = {f"{row['Cliente']} (Monto Pendiente: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_resumen.iterrows()}
@@ -716,6 +716,34 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 st.balloons()
                 st.success(f"🎉 ¡Abono de ${monto_abono:,.2f} registrado exitosamente para {cliente_info['Cliente']}!")
                 st.rerun()
+
+            # --- NUEVA OPCIÓN: ELIMINAR VENTA CON ERROR ---
+            with st.expander("⚠️ ¿Registraste una deuda por error? Eliminar un registro de deuda"):
+                conn = conectar_db()
+                df_ventas_del = pd.read_sql_query('''
+                    SELECT v.id, p.nombre AS producto, v.cantidad, v.saldo_pendiente, v.fecha, p.id AS producto_id
+                    FROM ventas v
+                    JOIN productos p ON v.producto_id = p.id
+                    WHERE v.cliente_id = ? AND v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
+                ''', conn, params=(cliente_id_sel,))
+                conn.close()
+
+                if not df_ventas_del.empty:
+                    dict_del = {f"ID Venta #{row['id']} - {row['producto']} ({row['cantidad']} uds) - Pendiente: ${row['saldo_pendiente']:.2f} ({row['fecha']})": row for _, row in df_ventas_del.iterrows()}
+                    venta_del_sel_str = st.selectbox("Selecciona la venta pendiente a borrar", list(dict_del.keys()))
+                    venta_del_info = dict_del[venta_del_sel_str]
+
+                    if st.button("🗑️ Eliminar Registro de Deuda", type="primary", use_container_width=True):
+                        conn = conectar_db()
+                        cursor = conn.cursor()
+                        # Devolver stock del producto
+                        cursor.execute("UPDATE productos SET stock = stock + ? WHERE id = ?", (venta_del_info['cantidad'], venta_del_info['producto_id']))
+                        # Borrar la venta
+                        cursor.execute("DELETE FROM ventas WHERE id = ?", (venta_del_info['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.warning(f"🗑️ Registro de venta #{venta_del_info['id']} eliminado y stock restituido.")
+                        st.rerun()
 
             st.divider()
 
