@@ -48,19 +48,19 @@ def obtener_tasa_bcv():
 
     return 880.12
 
-# --- FUNCIÓN PARA GENERAR LA TARJETA DE COBRO EN ALTA RESOLUCIÓN ---
+# --- FUNCIÓN PARA GENERAR LA TARJETA DE COBRO CON LETRAS GRANDES ---
 def generar_imagen_cobro(nombre_cliente, pendiente, neto, abonado, cant_pagos, fecha_antigua):
-    # Lienzo grande de alta resolución (1000x1100 px) para máxima nitidez en móviles
-    img = Image.new("RGB", (1000, 1100), color="#F5F7F8")
+    # Lienzo grande de alta resolución (1100x1250 px)
+    img = Image.new("RGB", (1100, 1250), color="#F5F7F8")
     draw = ImageDraw.Draw(img)
     
-    # Cargar fuentes seguras de gran tamaño
+    # Fuentes con tamaños mucho más grandes y claros
     try:
-        font_logo = ImageFont.truetype("arial.ttf", 44)
-        font_titulo = ImageFont.truetype("arial.ttf", 38)
-        font_sub = ImageFont.truetype("arial.ttf", 32)
-        font_texto = ImageFont.truetype("arial.ttf", 40)
-        font_monto = ImageFont.truetype("arial.ttf", 46)
+        font_logo = ImageFont.truetype("arial.ttf", 56)
+        font_titulo = ImageFont.truetype("arial.ttf", 46)
+        font_sub = ImageFont.truetype("arial.ttf", 38)
+        font_texto = ImageFont.truetype("arial.ttf", 48)
+        font_monto = ImageFont.truetype("arial.ttf", 56)
     except:
         font_logo = ImageFont.load_default()
         font_titulo = ImageFont.load_default()
@@ -69,14 +69,14 @@ def generar_imagen_cobro(nombre_cliente, pendiente, neto, abonado, cant_pagos, f
         font_monto = ImageFont.load_default()
 
     # Recuadro principal estilo tarjeta blanca elegante
-    draw.rectangle([(60, 60), (940, 1040)], fill="#FFFFFF", outline="#E0E0E0", width=3)
+    draw.rectangle([(50, 50), (1050, 1200)], fill="#FFFFFF", outline="#E0E0E0", width=3)
 
     # Cabecera superior con el color corporativo de Olinuts
-    draw.rectangle([(60, 60), (940, 260)], fill="#3F5963")
+    draw.rectangle([(50, 50), (1050, 280)], fill="#3F5963")
     
-    # Logo simulado / Inicial o título centrado
-    draw.text((500, 120), "☕ Olinuts", fill="#FFDE59", font=font_logo, anchor="mm")
-    draw.text((500, 195), f"Cliente: {nombre_cliente}", fill="#FFFFFF", font=font_titulo, anchor="mm")
+    # Logo y título
+    draw.text((550, 120), "☕ Olinuts", fill="#FFDE59", font=font_logo, anchor="mm")
+    draw.text((550, 210), f"Cliente: {nombre_cliente}", fill="#FFFFFF", font=font_titulo, anchor="mm")
 
     # Formatear fecha legible (Ej: 06 oct 2026)
     try:
@@ -86,29 +86,29 @@ def generar_imagen_cobro(nombre_cliente, pendiente, neto, abonado, cant_pagos, f
     except:
         fecha_formateada = fecha_antigua
 
-    # Líneas financieras con excelente separación y tamaños claros
-    y_pos = 360
+    # Líneas financieras con fuentes grandes
+    y_pos = 380
     
-    draw.text((150, y_pos), "Pendiente:", fill="#333333", font=font_texto)
-    draw.text((850, y_pos), f"${pendiente:,.2f}", fill="#E53935", font=font_monto, anchor="rt")
-    y_pos += 100
-
-    draw.text((150, y_pos), "Deuda neta:", fill="#333333", font=font_texto)
-    draw.text((850, y_pos), f"${neto:,.2f}", fill="#E53935", font=font_monto, anchor="rt")
-    y_pos += 100
-
-    draw.text((150, y_pos), "Abonado:", fill="#333333", font=font_texto)
-    draw.text((850, y_pos), f"${abonado:,.2f}", fill="#00A86B", font=font_monto, anchor="rt")
+    draw.text((120, y_pos), "Pendiente:", fill="#333333", font=font_texto)
+    draw.text((980, y_pos), f"${pendiente:,.2f}", fill="#E53935", font=font_monto, anchor="rt")
     y_pos += 120
 
+    draw.text((120, y_pos), "Deuda neta:", fill="#333333", font=font_texto)
+    draw.text((980, y_pos), f"${neto:,.2f}", fill="#E53935", font=font_monto, anchor="rt")
+    y_pos += 120
+
+    draw.text((120, y_pos), "Abonado:", fill="#333333", font=font_texto)
+    draw.text((980, y_pos), f"${abonado:,.2f}", fill="#00A86B", font=font_monto, anchor="rt")
+    y_pos += 140
+
     # Línea divisoria decorativa
-    draw.line([(150, y_pos), (850, y_pos)], fill="#E0E0E0", width=4)
+    draw.line([(120, y_pos), (980, y_pos)], fill="#E0E0E0", width=4)
     y_pos += 90
 
-    # Texto inferior de detalle de pagos
-    draw.text((500, y_pos), f"Tienes {cant_pagos} pago(s) pendiente(s)", fill="#222222", font=font_sub, anchor="mm")
-    y_pos += 70
-    draw.text((500, y_pos), f"desde el día {fecha_formateada}", fill="#666666", font=font_sub, anchor="mm")
+    # Texto inferior de detalle de pagos con letras grandes
+    draw.text((550, y_pos), f"Tienes {cant_pagos} pago(s) pendiente(s)", fill="#222222", font=font_sub, anchor="mm")
+    y_pos += 80
+    draw.text((550, y_pos), f"desde el día {fecha_formateada}", fill="#555555", font=font_sub, anchor="mm")
 
     # Guardar imagen en alta calidad
     ruta_imagen = "recibo_cobro_hd.png"
@@ -672,7 +672,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             fecha_mas_antigua = res_fechas[0] if res_fechas and res_fechas[0] else str(date.today())
             cant_pagos_pendientes = res_fechas[1] if res_fechas else 1
 
-            # Generar imagen de alta resolución y nitidez
+            # Generar imagen con letras grandes y alta resolución
             ruta_img_generada = generar_imagen_cobro(
                 nombre_cliente=cliente_info['Cliente'],
                 pendiente=deuda_maxima,
@@ -682,8 +682,8 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 fecha_antigua=fecha_mas_antigua
             )
 
-            # Mostrar la imagen en tamaño grande y nítido
-            st.image(ruta_img_generada, caption="📱 Tarjeta HD de Cobro Generada", use_container_width=True)
+            # Mostrar la tarjeta grande y nítida en pantalla
+            st.image(ruta_img_generada, caption="📱 Tarjeta HD de Cobro (Letras Grandes)", use_container_width=True)
 
             # --- BOTÓN DE ENVIAR WHATSAPP ---
             tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
@@ -726,7 +726,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 </a>
             ''', unsafe_allow_html=True)
             
-            st.success("💡 **Instrucciones:** La tarjeta de cobro se ha optimizado en alta definición y se muestra arriba. Al presionar el botón verde de WhatsApp, se abrirá el chat con el mensaje listo. Simplemente mantén presionada la tarjeta de arriba para guardarla en tu galería y adjúntala en el chat junto con el mensaje.")
+            st.success("💡 **Instrucciones:** La tarjeta se ha generado con letras grandes y claras arriba. Al presionar el botón verde, se abrirá WhatsApp con el mensaje listo. Mantén presionada la imagen de arriba para guardarla en tu galería y adjúntala en el chat junto con el mensaje.")
 
             col_ab1, col_ab2 = st.columns(2)
             with col_ab1:
