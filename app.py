@@ -154,7 +154,7 @@ inicializar_db()
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=60)
 st.sidebar.title("Navegación")
 
-opciones_menu = ["🏠 Inicio / Dashboard", "🛒 Registrar Venta", "👥 Clientes y Deudas", "📦 Productos e Inventario", "📈 Reportes y Métricas"]
+opciones_menu = ["🏠 Inicio / Dashboard", "🛒 Registrar Venta", "👥 Clientes y Cuentas por Cobrar", "📦 Productos e Inventario", "📈 Reportes y Métricas"]
 
 menu = st.sidebar.radio(
     "Ir a:", 
@@ -224,7 +224,7 @@ if menu == "🏠 Inicio / Dashboard":
     with c1:
         st.button("📦  Inventario", key="btn_inv", use_container_width=True, on_click=ir_a_seccion, args=("📦 Productos e Inventario",))
     with c2:
-        st.button("⚠️  Deudas", key="btn_deu", use_container_width=True, on_click=ir_a_seccion, args=("👥 Clientes y Deudas",))
+        st.button("📋  Cuentas por Cobrar", key="btn_deu", use_container_width=True, on_click=ir_a_seccion, args=("👥 Clientes y Cuentas por Cobrar",))
 
     st.divider()
 
@@ -296,7 +296,7 @@ elif menu == "🛒 Registrar Venta":
 
         tipo_pago = st.radio(
             "Condición de Pago", 
-            ["💵 Pagado de Contado", "📝 Deuda / Crédito Pendiente (Fiado)"], 
+            ["💵 Pagado de Contado", "📝 Crédito / Cuenta por Cobrar"], 
             horizontal=True
         )
         estado_pago_val = "Pagado" if "Pagado" in tipo_pago else "Pendiente"
@@ -326,14 +326,14 @@ elif menu == "🛒 Registrar Venta":
 # ---------------------------------------------------------
 # OPCIÓN 2: GESTIÓN DE CLIENTES Y CUENTAS POR COBRAR
 # ---------------------------------------------------------
-elif menu == "👥 Clientes y Cuentas por cobrar":
+elif menu == "👥 Clientes y Cuentas por Cobrar":
     col_header, col_home = st.columns([3, 1])
     with col_header:
-        st.header("👥 Gestión de Clientes y Cuentas por cobrar")
+        st.header("👥 Gestión de Clientes y Cuentas por Cobrar")
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_c", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 Listado General", "➕ Agregar Nuevo Cliente", "✏️ Editar / Eliminar Cliente", "⚠️ Cuentas por cobrar"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 Listado General", "➕ Agregar Nuevo Cliente", "✏️ Editar / Eliminar Cliente", "📋 Cuentas por Cobrar"])
 
     with tab1:
         conn = conectar_db()
@@ -409,7 +409,7 @@ elif menu == "👥 Clientes y Cuentas por cobrar":
             st.info("No hay clientes disponibles para editar.")
 
     with tab4:
-        st.subheader("Listado de Cuentas por cobrar")
+        st.subheader("Listado de Cuentas por Cobrar por Cliente")
         conn = conectar_db()
         df_deudas_resumen = pd.read_sql_query('''
             SELECT c.id AS cliente_id,
@@ -425,17 +425,17 @@ elif menu == "👥 Clientes y Cuentas por cobrar":
         conn.close()
 
         if df_deudas_resumen.empty:
-            st.success("🎉 ¡No hay cuentas por cobrar en este momento!")
+            st.success("🎉 ¡No hay cuentas por cobrar pendientes en este momento!")
         else:
             total_general = df_deudas_resumen['Saldo Pendiente ($)'].sum()
-            st.metric("Total General en cuentas por cobrar", f"${total_general:,.2f}")
+            st.metric("Total General por Cobrar", f"${total_general:,.2f}")
             
             df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Compras', 'Saldo Pendiente ($)']]
             st.dataframe(df_mostrar, use_container_width=True)
             
             st.subheader("💵 Registrar Abono o Pago")
             
-            opciones_clientes_deuda = {f"{row['Cliente']} (Deuda Total: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_resumen.iterrows()}
+            opciones_clientes_deuda = {f"{row['Cliente']} (Monto Pendiente: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_resumen.iterrows()}
             cliente_a_liquidar_str = st.selectbox("Selecciona el Cliente", list(opciones_clientes_deuda.keys()))
             cliente_info = opciones_clientes_deuda[cliente_a_liquidar_str]
             cliente_id_sel = cliente_info['cliente_id']
