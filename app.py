@@ -13,6 +13,8 @@ def conectar_db():
 def inicializar_db():
     conn = conectar_db()
     cursor = conn.cursor()
+    
+    # Tabla de Productos
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS productos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,18 +24,46 @@ def inicializar_db():
             stock INTEGER DEFAULT 0
         )
     ''')
+    
+    # Tabla de Clientes
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS clientes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            telefono TEXT
+        )
+    ''')
+    
+    # Insertar cliente por defecto
+    cursor.execute("SELECT COUNT(*) FROM clientes WHERE id = 1")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO clientes (id, nombre, telefono) VALUES (1, 'Cliente Mostrador / General', 'S/N')")
+
+    # Tabla de Ventas (incluye estado_pago)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ventas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             producto_id INTEGER,
+            cliente_id INTEGER DEFAULT 1,
             cantidad INTEGER NOT NULL,
             precio_unitario REAL NOT NULL,
             costo_unitario REAL NOT NULL,
             ganancia_total REAL NOT NULL,
+            estado_pago TEXT DEFAULT 'Pagado',
             fecha TEXT NOT NULL,
-            FOREIGN KEY (producto_id) REFERENCES productos(id)
+            FOREIGN KEY (producto_id) REFERENCES productos(id),
+            FOREIGN KEY (cliente_id) REFERENCES clientes(id)
         )
     ''')
+    
+    # Verificaciones de compatibilidad para tablas existentes
+    cursor.execute("PRAGMA table_info(ventas)")
+    columnas = [col[1] for col in cursor.fetchall()]
+    if 'cliente_id' not in columnas:
+        cursor.execute("ALTER TABLE ventas ADD COLUMN cliente_id INTEGER DEFAULT 1")
+    if 'estado_pago' not in columnas:
+        cursor.execute("ALTER TABLE ventas ADD COLUMN estado_pago TEXT DEFAULT 'Pagado'")
+
     conn.commit()
     conn.close()
 
@@ -43,7 +73,7 @@ inicializar_db()
 # --- INTERFAZ DE USUARIO CON STREAMLIT ---
 st.title("📊 Sistema de Control de Ventas y Ganancias")
 
-menu = st.sidebar.selectbox("Navegación", ["🛒 Registrar Venta", "📦 Productos e Inventario", "📈 Reportes y Métricas"])
+menu = st.sidebar.selectbox("Navegación", ["🛒 Registrar Venta", "👥 Clientes", "📦 Productos e Inventario", "📈 Reportes y Métricas"])
 
 # ---------------------------------------------------------
 # OPCIÓN 1: REGISTRAR VENTA
@@ -53,15 +83,25 @@ if menu == "🛒 Registrar Venta":
     
     conn = conectar_db()
     df_prods = pd.read_sql_query("SELECT id, nombre, costo_unitario, precio_venta, stock FROM productos", conn)
+    df_clientes = pd.read_sql_query("SELECT id, nombre, telefono FROM clientes", conn)
     conn.close()
 
     if df_prods.empty:
         st.warning("⚠️ Primero debes agregar productos en la sección 'Productos e Inventario'.")
     else:
-        # Formulario de Selección
-        opciones_productos = {f"{row['nombre']} (Stock: {row['stock']})": row for _, row in df_prods.iterrows()}
-        prod_seleccionado_str = st.selectbox("Selecciona un Producto", list(opciones_productos.keys()))
-        prod_data = opciones_productos[prod_seleccionado_str]
+        col_prod, col_cli = st.columns(2)
+        
+        with col_prod:
+            opciones_productos = {f"{row['nombre']} (Stock: {row['stock']})": row for _, row in df_prods.iterrows()}
+            prod_seleccionado_str = st.selectbox("Selecciona un Producto", list(opciones_productos.keys()))
+            prod_data = opciones_productos[prod_seleccionado_str]
+
+        with col_cli:
+            opciones_clientes = {f"{row['nombre']} ({row['telefono']})": row for _, row in df_clientes.iterrows()}
+            cliente_seleccionado_str = st.selectbox("Selecciona un Cliente", list(opciones_clientes.keys()))
+            cliente_data = opciones_clientes[cliente_seleccionado_str]
+
+        st.divider()
 
         col1, col2 = st.columns(2)
         with col1:
@@ -73,6 +113,14 @@ if menu == "🛒 Registrar Venta":
             ganancia_estimada = (prod_data['precio_venta'] - prod_data['costo_unitario']) * cantidad
             st.success(f"**Ganancia de esta venta:** ${ganancia_estimada:.2f}")
 
+        # Selección de Condición de Pago
+        tipo_pago = st.radio(
+            "Condición de Pago", 
+            ["💵 Pagado de Contado", "📝 Deuda / Crédito Pendiente (Fiado)"], 
+            horizontal=True
+        )
+        estado_pago_val = "Pagado" if "Pagado" in tipo_pago else "Pendiente"
+
         if prod_data['stock'] <= 0:
             st.error("❌ Producto agotado. Actualiza el stock en el inventario.")
         else:
@@ -82,11 +130,11 @@ if menu == "🛒 Registrar Venta":
                 
                 fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
-                # Insertar Venta
+                # Insertar Venta con estado de pago
                 cursor.execute('''
-                    INSERT INTO ventas (producto_id, cantidad, precio_unitario, costo_unitario, ganancia_total, fecha)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (prod_data['id'], cantidad, prod_data['precio_venta'], prod_data['costo_unitario'], ganancia_estimada, fecha_actual))
+                    INSERT INTO ventas (producto_id, cliente_id, cantidad, precio_unitario, costo_unitario, ganancia_total, estado_pago, fecha)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (prod_data['id'], cliente_data['id'], cantidad, prod_data['precio_venta'], prod_data['costo_unitario'], ganancia_estimada, estado_pago_val, fecha_actual))
                 
                 # Actualizar Stock
                 cursor.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cantidad, prod_data['id']))
@@ -94,11 +142,95 @@ if menu == "🛒 Registrar Venta":
                 conn.commit()
                 conn.close()
                 st.balloons()
-                st.success("🎉 ¡Venta registrada exitosamente!")
+                st.success(f"🎉 ¡Venta registrada exitosamente para {cliente_data['nombre']} ({'Contado' if estado_pago_val=='Pagado' else 'Deuda'})!")
                 st.rerun()
 
 # ---------------------------------------------------------
-# OPCIÓN 2: PRODUCTOS E INVENTARIO
+# OPCIÓN 2: GESTIÓN DE CLIENTES Y DEUDORES
+# ---------------------------------------------------------
+elif menu == "👥 Clientes":
+    st.header("Gestión de Clientes y Deudas")
+
+    tab1, tab2, tab3 = st.tabs(["📋 Listado General", "➕ Agregar Nuevo Cliente", "⚠️ Clientes Deudores"])
+
+    with tab1:
+        conn = conectar_db()
+        df_cli = pd.read_sql_query("SELECT id AS 'ID', nombre AS 'Nombre', telefono AS 'Teléfono' FROM clientes", conn)
+        conn.close()
+
+        if not df_cli.empty:
+            st.dataframe(df_cli, use_container_width=True)
+        else:
+            st.info("No hay clientes registrados aún.")
+
+    with tab2:
+        with st.form("form_cliente"):
+            nombre_cliente = st.text_input("Nombre Completo del Cliente")
+            telefono_cliente = st.text_input("Número de Teléfono / WhatsApp")
+            guardar_cliente = st.form_submit_button("Guardar Cliente")
+
+            if guardar_cliente:
+                if nombre_cliente.strip() == "":
+                    st.error("El nombre del cliente no puede estar vacío.")
+                else:
+                    conn = conectar_db()
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT INTO clientes (nombre, telefono)
+                        VALUES (?, ?)
+                    ''', (nombre_cliente, telefono_cliente if telefono_cliente.strip() else 'Sin teléfono'))
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Cliente '{nombre_cliente}' agregado correctamente.")
+                    st.rerun()
+
+    with tab3:
+        st.subheader("Listado de Deudas Pendientes por Cobrar")
+        
+        conn = conectar_db()
+        df_deudas = pd.read_sql_query('''
+            SELECT v.id AS 'ID Venta', 
+                   c.nombre AS 'Cliente',
+                   c.telefono AS 'Teléfono',
+                   p.nombre AS 'Producto',
+                   v.cantidad AS 'Cantidad',
+                   (v.cantidad * v.precio_unitario) AS 'Total Deuda ($)',
+                   v.fecha AS 'Fecha'
+            FROM ventas v
+            JOIN clientes c ON v.cliente_id = c.id
+            JOIN productos p ON v.producto_id = p.id
+            WHERE v.estado_pago = 'Pendiente'
+            ORDER BY v.fecha DESC
+        ''', conn)
+        conn.close()
+
+        if df_deudas.empty:
+            st.success("🎉 ¡Excelente! No hay deudas pendientes de cobro en este momento.")
+        else:
+            # Mostrar métrica rápida de total adeudado
+            total_por_cobrar = df_deudas['Total Deuda ($)'].sum()
+            st.metric("Total General en Deudas", f"${total_por_cobrar:,.2f}")
+            
+            st.divider()
+            st.dataframe(df_deudas, use_container_width=True)
+            
+            st.subheader("Registrar Cobro / Abonar Deuda")
+            st.info("Selecciona el **ID de la Venta** que el cliente acaba de pagar para actualizar su estado a 'Pagado'.")
+            
+            ids_pendientes = df_deudas['ID Venta'].tolist()
+            venta_a_pagar = st.selectbox("Selecciona ID de Venta a Liquidar", ids_pendientes)
+            
+            if st.button("✅ Marcar Venta como Pagada", type="primary"):
+                conn = conectar_db()
+                cursor = conn.cursor()
+                cursor.execute("UPDATE ventas SET estado_pago = 'Pagado' WHERE id = ?", (venta_a_pagar,))
+                conn.commit()
+                conn.close()
+                st.success(f"🎉 ¡La venta ID {venta_a_pagar} ha sido marcada como pagada exitosamente!")
+                st.rerun()
+
+# ---------------------------------------------------------
+# OPCIÓN 3: PRODUCTOS E INVENTARIO
 # ---------------------------------------------------------
 elif menu == "📦 Productos e Inventario":
     st.header("Gestión de Inventario")
@@ -107,7 +239,7 @@ elif menu == "📦 Productos e Inventario":
 
     with tab1:
         conn = conectar_db()
-        df_prods = pd.read_sql_query("SELECT id, nombre AS Producto, costo_unitario AS 'Costo ($)', precio_venta AS 'Precio ($)', stock AS Stock FROM productos", conn)
+        df_prods = pd.read_sql_query("SELECT id AS ID, nombre AS Producto, costo_unitario AS 'Costo ($)', precio_venta AS 'Precio ($)', stock AS Stock FROM productos", conn)
         conn.close()
 
         if not df_prods.empty:
@@ -144,19 +276,27 @@ elif menu == "📦 Productos e Inventario":
                     st.rerun()
 
 # ---------------------------------------------------------
-# OPCIÓN 3: REPORTES Y MÉTRICAS
+# OPCIÓN 4: REPORTES Y MÉTRICAS
 # ---------------------------------------------------------
 elif menu == "📈 Reportes y Métricas":
     st.header("Métricas y Rendimiento Financiero")
 
     conn = conectar_db()
     df_ventas = pd.read_sql_query('''
-        SELECT v.id, p.nombre AS Producto, v.cantidad AS Cantidad, 
-               v.precio_unitario AS 'Precio Unit. ($)', v.costo_unitario AS 'Costo Unit. ($)',
+        SELECT v.id AS 'ID Venta', 
+               p.nombre AS 'Producto', 
+               c.nombre AS 'Cliente',
+               c.telefono AS 'Teléfono Cliente',
+               v.cantidad AS 'Cantidad', 
+               v.precio_unitario AS 'Precio Unit. ($)', 
+               v.costo_unitario AS 'Costo Unit. ($)',
                (v.cantidad * v.precio_unitario) AS 'Ingreso Total ($)',
-               v.ganancia_total AS 'Ganancia ($)', v.fecha AS Fecha
+               v.ganancia_total AS 'Ganancia ($)', 
+               v.estado_pago AS 'Estado de Pago',
+               v.fecha AS 'Fecha'
         FROM ventas v
         JOIN productos p ON v.producto_id = p.id
+        LEFT JOIN clientes c ON v.cliente_id = c.id
         ORDER BY v.id DESC
     ''', conn)
     conn.close()
@@ -167,16 +307,19 @@ elif menu == "📈 Reportes y Métricas":
         # Métricas Principales (KPIs)
         total_ingresos = df_ventas['Ingreso Total ($)'].sum()
         total_ganancias = df_ventas['Ganancia ($)'].sum()
-        total_unidades = df_ventas['Cantidad'].sum()
-        margen_promedio = (total_ganancias / total_ingresos * 100) if total_ingresos > 0 else 0
+        
+        # Calcular total de deudas pendientes
+        df_pendientes = df_ventas[df_ventas['Estado de Pago'] == 'Pendiente']
+        total_deudas = df_pendientes['Ingreso Total ($)'].sum() if not df_pendientes.empty else 0.0
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Ingresos Totales", f"${total_ingresos:,.2f}")
         col2.metric("Ganancia Neta Total", f"${total_ganancias:,.2f}")
-        col3.metric("Unidades Vendidas", f"{total_unidades}")
-        col4.metric("Margen Global", f"{margen_promedio:.1f}%")
+        col3.metric("Deudas Pendientes", f"${total_deudas:,.2f}", delta_color="inverse")
+        col4.metric("Unidades Vendidas", f"{df_ventas['Cantidad'].sum()}")
 
         st.divider()
 
         st.subheader("Historial Detallado de Ventas")
         st.dataframe(df_ventas, use_container_width=True)
+        
