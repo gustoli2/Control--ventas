@@ -280,7 +280,8 @@ inicializar_db()
 tasa_bcv_auto = obtener_tasa_bcv()
 
 # --- NAVEGACIÓN EN EL MENÚ LATERAL ---
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=65)
+# Imagen del maní (nut)
+st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2515/2515183.png", width=90)
 st.sidebar.title("OLINUTS")
 
 tasa_oficial = st.sidebar.number_input("💵 Tasa BCV Hoy (Bs/$)", min_value=1.0, value=tasa_bcv_auto, format="%.2f")
@@ -866,7 +867,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             st.divider()
 
-            # --- LISTA DESPLEGABLE CON DETALLE DE PRODUCTOS POR CLIENTE DEUDOR ---
             st.markdown('<div class="sub-header-yellow">📋 Listado de Cuentas por Cobrar (Toca un cliente para ver el detalle)</div>', unsafe_allow_html=True)
             
             conn = conectar_db()
@@ -877,11 +877,9 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 cli_deuda_usd = row_cli['Saldo Pendiente ($)']
                 cli_deuda_bs = cli_deuda_usd * tasa_oficial
 
-                # Título responsivo del desplegable
                 titulo_expander = f"👤 {cli_nombre} | Deuda: ${cli_deuda_usd:,.2f} (~ Bs. {cli_deuda_bs:,.2f}) | 📞 {cli_tel}"
                 
                 with st.expander(titulo_expander):
-                    # Consultar productos comprados a crédito pendientes por este cliente
                     df_detalles_compras = pd.read_sql_query('''
                         SELECT p.nombre AS 'Producto',
                                v.cantidad AS 'Cantidad',
