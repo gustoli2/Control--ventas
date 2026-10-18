@@ -60,96 +60,120 @@ def ir_a_subseccion_clientes(nombre_subseccion):
 def ir_a_subseccion_inventario(nombre_subseccion):
     st.session_state['subseccion_inventario'] = nombre_subseccion
 
-# --- ESTILOS CSS PERSONALIZADOS ---
+# --- ESTILOS CSS PERSONALIZADOS (FUENTE MÁS GRANDE) ---
 st.markdown("""
 <style>
+    /* Fuente global general */
+    html, body, [class*="css"], .stMarkdown, p, div, label {
+        font-size: 18px !important;
+    }
+
     .stApp {
         background-color: #F5F2EB;
     }
+
+    /* Títulos e inputs de Streamlit */
+    .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"], .stDateInput input {
+        font-size: 18px !important;
+    }
+
+    /* Botones más grandes */
+    .stButton button {
+        font-size: 18px !important;
+        font-weight: bold !important;
+        padding: 10px 16px !important;
+    }
+
+    /* Encabezado Principal */
     .header-container {
         background-color: #FFDE59;
-        padding: 20px 20px 10px 20px;
+        padding: 22px 20px 12px 20px;
         border-bottom-left-radius: 20px;
         border-bottom-right-radius: 20px;
         margin-top: -60px;
         margin-bottom: 20px;
     }
-    .section-header-yellow {
-        background-color: #FFDE59;
-        padding: 12px 15px;
-        border-radius: 12px;
-        color: #111111;
-        font-size: 20px;
-        font-weight: bold;
-        text-align: center;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        margin-bottom: 10px;
-        box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.05);
-    }
-    .sub-header-yellow {
-        background-color: #FFEE99;
-        border: 1px solid #FBC02D;
-        padding: 10px 14px;
-        border-radius: 10px;
-        color: #222222;
-        font-size: 16px;
-        font-weight: bold;
-        margin-top: 15px;
-        margin-bottom: 15px;
-        box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.04);
-    }
-    .tasa-card {
-        background-color: #FFF9C4;
-        border: 1px solid #FBC02D;
-        border-radius: 12px;
-        padding: 10px 15px;
-        margin-bottom: 15px;
-        text-align: center;
-        font-weight: bold;
-        color: #333333;
-    }
     .header-title {
-        font-size: 24px;
+        font-size: 28px !important;
         font-weight: bold;
         color: #111111;
         margin: 0;
     }
     .header-subtitle {
-        font-size: 14px;
+        font-size: 16px !important;
         color: #555555;
         margin-bottom: 10px;
+    }
+
+    /* Banners Amarillos de Sección */
+    .section-header-yellow {
+        background-color: #FFDE59;
+        padding: 14px 18px;
+        border-radius: 12px;
+        color: #111111;
+        font-size: 22px !important;
+        font-weight: bold;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-bottom: 12px;
+        box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.05);
+    }
+    .sub-header-yellow {
+        background-color: #FFEE99;
+        border: 1px solid #FBC02D;
+        padding: 12px 16px;
+        border-radius: 10px;
+        color: #222222;
+        font-size: 18px !important;
+        font-weight: bold;
+        margin-top: 18px;
+        margin-bottom: 18px;
+        box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.04);
+    }
+
+    /* Tarjetas e Info */
+    .tasa-card {
+        background-color: #FFF9C4;
+        border: 1px solid #FBC02D;
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-bottom: 15px;
+        text-align: center;
+        font-weight: bold;
+        color: #333333;
+        font-size: 19px !important;
     }
     .business-card {
         background-color: #FFFFFF;
         border-radius: 16px;
-        padding: 20px;
+        padding: 22px;
         box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.05);
         margin-bottom: 20px;
     }
     .card-title {
-        font-size: 18px;
+        font-size: 20px !important;
         font-weight: 600;
         color: #333333;
     }
     .card-amount {
-        font-size: 32px;
+        font-size: 36px !important;
         font-weight: bold;
         color: #111111;
     }
     .amount-green {
         color: #00A86B;
         font-weight: bold;
-        font-size: 20px;
+        font-size: 22px !important;
     }
     .amount-red {
         color: #E53935;
         font-weight: bold;
-        font-size: 20px;
+        font-size: 22px !important;
     }
     .quick-access-title {
-        font-size: 16px;
+        font-size: 18px !important;
         font-weight: bold;
         color: #222222;
         margin-top: 15px;
@@ -158,7 +182,7 @@ st.markdown("""
     .stat-card {
         background-color: #FFFFFF;
         border-radius: 14px;
-        padding: 15px;
+        padding: 16px;
         border: 1px solid #EEEEEE;
         box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.03);
     }
@@ -168,7 +192,7 @@ st.markdown("""
         border-radius: 10px;
         padding: 10px;
         text-align: center;
-        min-height: 90px;
+        min-height: 95px;
         margin-bottom: 10px;
         box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.02);
     }
@@ -178,9 +202,14 @@ st.markdown("""
         border-radius: 10px;
         padding: 10px;
         text-align: center;
-        min-height: 90px;
+        min-height: 95px;
         margin-bottom: 10px;
         box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Tablas de Streamlit */
+    [data-testid="stDataFrame"] {
+        font-size: 17px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -251,7 +280,7 @@ inicializar_db()
 tasa_bcv_auto = obtener_tasa_bcv()
 
 # --- NAVEGACIÓN EN EL MENÚ LATERAL ---
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=60)
+st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=65)
 st.sidebar.title("OLINUTS")
 
 tasa_oficial = st.sidebar.number_input("💵 Tasa BCV Hoy (Bs/$)", min_value=1.0, value=tasa_bcv_auto, format="%.2f")
@@ -320,17 +349,17 @@ if menu == "🏠 Inicio / Dashboard":
         <div class="business-card">
             <div class="card-title">Tu negocio hoy</div>
             <div class="card-amount">${ventas_hoy:,.2f}</div>
-            <div style="font-size: 13px; color: #555; margin-bottom: 15px;">Bs. {ventas_hoy_bs:,.2f}</div>
+            <div style="font-size: 15px; color: #555; margin-bottom: 15px;">Bs. {ventas_hoy_bs:,.2f}</div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
                 <div>
-                    <span style="font-size: 12px; color: #666;">Balance</span><br>
+                    <span style="font-size: 14px; color: #666;">Balance</span><br>
                     <span class="amount-green">${balance_hoy:,.2f}</span><br>
-                    <span style="font-size: 11px; color: #666;">Bs. {balance_hoy_bs:,.2f}</span>
+                    <span style="font-size: 13px; color: #666;">Bs. {balance_hoy_bs:,.2f}</span>
                 </div>
                 <div style="text-align: right;">
-                    <span style="font-size: 12px; color: #666;">Costos hoy</span><br>
+                    <span style="font-size: 14px; color: #666;">Costos hoy</span><br>
                     <span class="amount-red">${costos_hoy:,.2f}</span><br>
-                    <span style="font-size: 11px; color: #666;">Bs. {costos_hoy_bs:,.2f}</span>
+                    <span style="font-size: 13px; color: #666;">Bs. {costos_hoy_bs:,.2f}</span>
                 </div>
             </div>
         </div>
@@ -377,7 +406,7 @@ if menu == "🏠 Inicio / Dashboard":
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# OPCIÓN 1: REGISTRAR VENTA (CON CARRITO MULTIPRODUCTO)
+# OPCIÓN 1: REGISTRAR VENTA (CARRITO MULTIPRODUCTO)
 # ---------------------------------------------------------
 elif menu == "🛒 Registrar Venta":
     col_header, col_home = st.columns([3, 1])
@@ -394,7 +423,6 @@ elif menu == "🛒 Registrar Venta":
     if df_prods.empty:
         st.warning("⚠️ Primero debes agregar productos en la sección 'Productos e Inventario'.")
     else:
-        # --- SECCIÓN 1: DATOS GENERALES (FECHA Y CLIENTE) ---
         col_f, col_c = st.columns(2)
         with col_f:
             st.markdown('<div class="sub-header-yellow">📅 Fecha de la Venta</div>', unsafe_allow_html=True)
@@ -429,10 +457,8 @@ elif menu == "🛒 Registrar Venta":
 
         st.divider()
 
-        # --- SECCIÓN 2: SELECCIÓN Y AGREGADO DE PRODUCTOS AL CARRITO ---
         st.markdown('<div class="sub-header-yellow">📦 Agregar Productos al Pedido</div>', unsafe_allow_html=True)
         
-        # Filtrar productos con stock > 0
         df_prods_disponibles = df_prods[df_prods['stock'] > 0]
         
         if df_prods_disponibles.empty:
@@ -442,7 +468,6 @@ elif menu == "🛒 Registrar Venta":
             prod_seleccionado_str = st.selectbox("Selecciona un Producto", list(opciones_productos.keys()))
             prod_data = opciones_productos[prod_seleccionado_str]
 
-            # Calcular el stock disponible ajustado restando lo que ya está en el carrito
             cantidad_ya_en_carrito = sum(item['cantidad'] for item in st.session_state['carrito_ventas'] if item['producto_id'] == prod_data['id'])
             stock_restringido = int(prod_data['stock']) - cantidad_ya_en_carrito
 
@@ -471,13 +496,11 @@ elif menu == "🛒 Registrar Venta":
                         })
                         st.rerun()
 
-        # --- SECCIÓN 3: VER Y GESTIONAR CARRITO ---
         st.markdown('<div class="sub-header-yellow">🛒 Resumen del Carrito de Ventas</div>', unsafe_allow_html=True)
         
         if len(st.session_state['carrito_ventas']) == 0:
             st.info("🛒 Tu carrito está vacío. Selecciona un producto arriba y presiona 'Agregar al Carrito'.")
         else:
-            # Renderizar tabla responsiva del carrito
             for idx, item in enumerate(st.session_state['carrito_ventas']):
                 col_i1, col_i2, col_i3, col_i4, col_i5 = st.columns([3, 1, 2, 2, 1])
                 col_i1.write(f"**{item['nombre']}**")
@@ -498,7 +521,6 @@ elif menu == "🛒 Registrar Venta":
             col_tot1.metric("Total General Pedido", f"${monto_total_pedido:,.2f}", f"Bs. {monto_total_pedido_bs:,.2f}")
             col_tot2.metric("Ganancia Estimada Pedido", f"${ganancia_total_pedido:,.2f}")
 
-            # Condición de pago
             tipo_pago = st.radio(
                 "Condición de Pago del Pedido", 
                 ["💵 Pagado de Contado", "📝 Crédito / Cuenta por Cobrar"], 
@@ -692,7 +714,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             col_m1.metric("Total USD por Cobrar", f"${total_general:,.2f}")
             col_m2.metric("Total Bs. por Cobrar", f"Bs. {total_general_bs:,.2f}")
             
-            # --- SECCIÓN: REGISTRAR ABONO / NOTIFICAR WHATSAPP ---
             st.markdown('<div class="sub-header-yellow">💵 Registrar Abono o Pago / Notificar por WhatsApp</div>', unsafe_allow_html=True)
             
             opciones_clientes_deuda = {f"{row['Cliente']} (Monto Pendiente: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_resumen.iterrows()}
@@ -702,7 +723,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
             deuda_maxima_bs = deuda_maxima * tasa_oficial
 
-            # --- BOTÓN DE ENVIAR WHATSAPP ---
             tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
             if tel_bruto.startswith("0"):
                 num_wa = "58" + tel_bruto[1:]
@@ -734,7 +754,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                         border-radius: 12px; 
                         text-align: center; 
                         font-weight: bold; 
-                        font-size: 16px;
+                        font-size: 18px;
                         margin-top: 10px;
                         margin-bottom: 20px;
                         box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);">
@@ -785,7 +805,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 st.success(f"🎉 ¡Abono de ${monto_abono:,.2f} registrado exitosamente para {cliente_info['Cliente']}!")
                 st.rerun()
 
-            # --- OPCIÓN: ELIMINAR VENTA CON ERROR ---
             with st.expander("⚠️ ¿Registraste una deuda por error? Eliminar un registro de deuda"):
                 conn = conectar_db()
                 df_ventas_del = pd.read_sql_query('''
@@ -804,9 +823,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                     if st.button("🗑️ Eliminar Registro de Deuda", type="primary", use_container_width=True):
                         conn = conectar_db()
                         cursor = conn.cursor()
-                        # Devolver stock del producto
                         cursor.execute("UPDATE productos SET stock = stock + ? WHERE id = ?", (venta_del_info['cantidad'], venta_del_info['producto_id']))
-                        # Borrar la venta
                         cursor.execute("DELETE FROM ventas WHERE id = ?", (venta_del_info['id'],))
                         conn.commit()
                         conn.close()
@@ -815,7 +832,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             st.divider()
 
-            # --- TABLA UBICADA AL FINAL DE LA PÁGINA ---
             st.markdown('<div class="sub-header-yellow">📋 Listado de Cuentas por Cobrar por Cliente</div>', unsafe_allow_html=True)
             df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Compras', 'Saldo Pendiente ($)']]
             st.dataframe(df_mostrar, use_container_width=True)
@@ -998,16 +1014,16 @@ elif menu == "📅 Calendario Anual de Ventas":
                     if monto_dia > 0:
                         st.markdown(f'''
                             <div class="day-box-active">
-                                <b style="font-size: 16px; color: #333;">{dia}</b><br>
-                                <span style="color: #00A86B; font-weight: bold; font-size: 13px;">${monto_dia:,.2f}</span><br>
-                                <span style="color: #666; font-size: 10px;">Bs. {monto_dia_bs:,.0f}</span>
+                                <b style="font-size: 18px; color: #333;">{dia}</b><br>
+                                <span style="color: #00A86B; font-weight: bold; font-size: 14px;">${monto_dia:,.2f}</span><br>
+                                <span style="color: #666; font-size: 11px;">Bs. {monto_dia_bs:,.0f}</span>
                             </div>
                         ''', unsafe_allow_html=True)
                     else:
                         st.markdown(f'''
                             <div class="day-box">
-                                <b style="font-size: 16px; color: #777;">{dia}</b><br>
-                                <span style="color: #999; font-size: 12px;">$0.00</span>
+                                <b style="font-size: 18px; color: #777;">{dia}</b><br>
+                                <span style="color: #999; font-size: 13px;">$0.00</span>
                             </div>
                         ''', unsafe_allow_html=True)
 
