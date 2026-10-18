@@ -23,7 +23,7 @@ if 'subseccion_inventario' not in st.session_state:
     st.session_state['subseccion_inventario'] = "📋 Listado de Productos"
 
 # --- FUNCIÓN PARA OBTENER LA TASA BCV EN TIEMPO REAL ---
-@st.cache_data(ttl=3600)  # Guarda la tasa en caché durante 1 hora para no recargar la página constantemente
+@st.cache_data(ttl=3600)  # Guarda la tasa en caché durante 1 hora
 def obtener_tasa_bcv():
     try:
         url = "https://ve.dolarapi.com/v1/dolares/oficial"
@@ -44,7 +44,7 @@ def obtener_tasa_bcv():
     except Exception:
         pass
 
-    return 881.07  # Valor de respaldo predeterminado si falla la conexión
+    return 880.12  # Valor de respaldo predeterminado si falla la conexión
 
 # --- FUNCIONES DE NAVEGACIÓN ---
 def ir_a_seccion(nombre_seccion):
@@ -301,7 +301,7 @@ if menu == "🏠 Inicio / Dashboard":
     with c1:
         st.button("📦  Inventario", key="btn_inv", use_container_width=True, on_click=ir_a_seccion, args=("📦 Productos e Inventario",))
     with c2:
-        st.button("📋  Cuentas por Cobrar", key="btn_deu", use_container_width=True, on_click=ir_a_seccion, args=("👥 Clientes y Cuentas por Cobrar",))
+        st.button("👥  Gestión de Clientes", key="btn_deu", use_container_width=True, on_click=ir_a_seccion, args=("👥 Clientes y Cuentas por Cobrar",))
 
     st.divider()
 
