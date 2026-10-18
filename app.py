@@ -5,8 +5,8 @@ from datetime import datetime, date
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Control de Ventas",
-    page_icon="🟡",
+    page_title="OLINUTS - Control de Ventas",
+    page_icon="👑",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -152,7 +152,7 @@ inicializar_db()
 
 # --- NAVEGACIÓN EN EL MENÚ LATERAL ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=60)
-st.sidebar.title("Navegación")
+st.sidebar.title("OLINUTS")
 
 opciones_menu = ["🏠 Inicio / Dashboard", "🛒 Registrar Venta", "👥 Clientes y Cuentas por Cobrar", "📦 Productos e Inventario", "📈 Reportes y Métricas"]
 
@@ -168,8 +168,8 @@ menu = st.sidebar.radio(
 if menu == "🏠 Inicio / Dashboard":
     st.markdown("""
         <div class="header-container">
-            <div class="header-title">👑 Mi Negocio</div>
-            <div class="header-subtitle">Propietario / Panel Principal</div>
+            <div class="header-title">👑 OLINUTS</div>
+            <div class="header-subtitle">Gustavo Oliveira / Propietario</div>
         </div>
     """, unsafe_allow_html=True)
     
