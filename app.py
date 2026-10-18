@@ -45,6 +45,20 @@ st.markdown("""
         margin-top: -60px;
         margin-bottom: 20px;
     }
+    .section-header-yellow {
+        background-color: #FFDE59;
+        padding: 12px 15px;
+        border-radius: 12px;
+        color: #111111;
+        font-size: 20px;
+        font-weight: bold;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-bottom: 10px;
+        box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.05);
+    }
     .header-title {
         font-size: 24px;
         font-weight: bold;
@@ -269,7 +283,7 @@ if menu == "🏠 Inicio / Dashboard":
 elif menu == "🛒 Registrar Venta":
     col_header, col_home = st.columns([3, 1])
     with col_header:
-        st.header("🛒 Registrar Nueva Venta")
+        st.markdown('<div class="section-header-yellow">🛒 Registrar Venta</div>', unsafe_allow_html=True)
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_v", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
     
@@ -340,7 +354,7 @@ elif menu == "🛒 Registrar Venta":
 elif menu == "👥 Clientes y Cuentas por Cobrar":
     col_header, col_home = st.columns([3, 1])
     with col_header:
-        st.header("👥 Gestión de Clientes y Cuentas por Cobrar")
+        st.markdown('<div class="section-header-yellow">👥 Gestión de Clientes</div>', unsafe_allow_html=True)
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_c", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
@@ -542,13 +556,12 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 elif menu == "📦 Productos e Inventario":
     col_header, col_home = st.columns([3, 1])
     with col_header:
-        st.header("📦 Gestión de Inventario")
+        st.markdown('<div class="section-header-yellow">📦 Gestión de Inventario</div>', unsafe_allow_html=True)
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_p", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
     st.markdown('<div class="quick-access-title">Opciones de Inventario</div>', unsafe_allow_html=True)
     
-    # Cuadrícula de Tarjetas Táctiles para Inventario
     inv_col1, inv_col2 = st.columns(2)
     with inv_col1:
         st.button(
@@ -660,7 +673,7 @@ elif menu == "📦 Productos e Inventario":
 elif menu == "📈 Reportes y Métricas":
     col_header, col_home = st.columns([3, 1])
     with col_header:
-        st.header("📈 Reportes Financieros")
+        st.markdown('<div class="section-header-yellow">📈 Reportes Financieros</div>', unsafe_allow_html=True)
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_r", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
