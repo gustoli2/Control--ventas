@@ -18,12 +18,18 @@ if 'menu_radio' not in st.session_state:
 if 'subseccion_clientes' not in st.session_state:
     st.session_state['subseccion_clientes'] = "📋 Listado General"
 
+if 'subseccion_inventario' not in st.session_state:
+    st.session_state['subseccion_inventario'] = "📋 Listado de Productos"
+
 # --- FUNCIONES DE NAVEGACIÓN ---
 def ir_a_seccion(nombre_seccion):
     st.session_state['menu_radio'] = nombre_seccion
 
 def ir_a_subseccion_clientes(nombre_subseccion):
     st.session_state['subseccion_clientes'] = nombre_subseccion
+
+def ir_a_subseccion_inventario(nombre_subseccion):
+    st.session_state['subseccion_inventario'] = nombre_subseccion
 
 # --- ESTILOS CSS PERSONALIZADOS ---
 st.markdown("""
@@ -340,7 +346,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
     st.markdown('<div class="quick-access-title">Opciones de Gestión</div>', unsafe_allow_html=True)
     
-    # Cuadrícula de Tarjetas Táctiles (2x2)
     card_col1, card_col2 = st.columns(2)
     with card_col1:
         st.button(
@@ -380,7 +385,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
     st.divider()
 
-    # Contenido según la tarjeta seleccionada
     submenu = st.session_state['subseccion_clientes']
 
     if submenu == "📋 Listado General":
@@ -542,9 +546,44 @@ elif menu == "📦 Productos e Inventario":
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_p", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
-    tab1, tab2, tab3 = st.tabs(["📋 Listado de Productos", "➕ Agregar Nuevo Producto", "✏️ Editar / Eliminar Producto"])
+    st.markdown('<div class="quick-access-title">Opciones de Inventario</div>', unsafe_allow_html=True)
+    
+    # Cuadrícula de Tarjetas Táctiles para Inventario
+    inv_col1, inv_col2 = st.columns(2)
+    with inv_col1:
+        st.button(
+            "📋 Listado de Productos", 
+            key="btn_inv_list", 
+            use_container_width=True, 
+            type="primary" if st.session_state['subseccion_inventario'] == "📋 Listado de Productos" else "secondary",
+            on_click=ir_a_subseccion_inventario, 
+            args=("📋 Listado de Productos",)
+        )
+        st.button(
+            "✏️ Editar / Eliminar", 
+            key="btn_inv_edit", 
+            use_container_width=True, 
+            type="primary" if st.session_state['subseccion_inventario'] == "✏️ Editar / Eliminar" else "secondary",
+            on_click=ir_a_subseccion_inventario, 
+            args=("✏️ Editar / Eliminar",)
+        )
 
-    with tab1:
+    with inv_col2:
+        st.button(
+            "➕ Agregar Producto", 
+            key="btn_inv_add", 
+            use_container_width=True, 
+            type="primary" if st.session_state['subseccion_inventario'] == "➕ Agregar Nuevo Producto" else "secondary",
+            on_click=ir_a_subseccion_inventario, 
+            args=("➕ Agregar Nuevo Producto",)
+        )
+
+    st.divider()
+
+    sub_inv = st.session_state['subseccion_inventario']
+
+    if sub_inv == "📋 Listado de Productos":
+        st.subheader("📋 Listado de Productos")
         conn = conectar_db()
         df_prods = pd.read_sql_query("SELECT id AS ID, nombre AS Producto, costo_unitario AS 'Costo ($)', precio_venta AS 'Precio ($)', stock AS Stock FROM productos", conn)
         conn.close()
@@ -554,7 +593,8 @@ elif menu == "📦 Productos e Inventario":
         else:
             st.info("No hay productos registrados aún.")
 
-    with tab2:
+    elif sub_inv == "➕ Agregar Nuevo Producto":
+        st.subheader("➕ Agregar Nuevo Producto")
         with st.form("form_producto"):
             nombre = st.text_input("Nombre del Producto")
             col1, col2, col3 = st.columns(3)
@@ -572,7 +612,8 @@ elif menu == "📦 Productos e Inventario":
                     st.success(f"✅ Producto '{nombre}' agregado.")
                     st.rerun()
 
-    with tab3:
+    elif sub_inv == "✏️ Editar / Eliminar":
+        st.subheader("✏️ Editar o Eliminar Producto Existente")
         conn = conectar_db()
         df_prods_edit = pd.read_sql_query("SELECT * FROM productos", conn)
         conn.close()
