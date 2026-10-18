@@ -11,9 +11,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Inicializar estado de navegación si no existe
-if 'seccion_activa' not in st.session_state:
-    st.session_state['seccion_activa'] = "🏠 Inicio / Dashboard"
+# Inicializar la clave 'menu_radio' si no existe
+if 'menu_radio' not in st.session_state:
+    st.session_state['menu_radio'] = "🏠 Inicio / Dashboard"
+
+# --- FUNCIONES DE NAVEGACIÓN ---
+def ir_a_seccion(nombre_seccion):
+    st.session_state['menu_radio'] = nombre_seccion
 
 # --- ESTILOS CSS PERSONALIZADOS ---
 st.markdown("""
@@ -80,21 +84,6 @@ st.markdown("""
         padding: 15px;
         border: 1px solid #EEEEEE;
         box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.03);
-    }
-    
-    /* Estilo para convertir botones estándar en tarjetas amarillas */
-    div.stButton > button.quick-btn {
-        background-color: #FFF9D6 !important;
-        color: #333333 !important;
-        border: 1px solid #FFE885 !important;
-        border-radius: 14px !important;
-        height: 80px !important;
-        font-weight: 600 !important;
-        font-size: 16px !important;
-    }
-    div.stButton > button.quick-btn:hover {
-        background-color: #FFE885 !important;
-        border-color: #FFDE59 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -167,15 +156,10 @@ st.sidebar.title("Navegación")
 
 opciones_menu = ["🏠 Inicio / Dashboard", "🛒 Registrar Venta", "👥 Clientes y Deudas", "📦 Productos e Inventario", "📈 Reportes y Métricas"]
 
-def cambiar_seccion():
-    st.session_state['seccion_activa'] = st.session_state['radio_menu']
-
 menu = st.sidebar.radio(
     "Ir a:", 
     opciones_menu, 
-    index=opciones_menu.index(st.session_state['seccion_activa']),
-    key='radio_menu',
-    on_change=cambiar_seccion
+    key='menu_radio'
 )
 
 # ---------------------------------------------------------
@@ -233,20 +217,14 @@ if menu == "🏠 Inicio / Dashboard":
 
     st.markdown('<div class="quick-access-title">Descubre todo lo que puedes hacer</div>', unsafe_allow_html=True)
     
-    # Botones directos interactivos
-    if st.button("🛒\nNueva Venta", key="btn_nueva_venta", use_container_width=True):
-        st.session_state['seccion_activa'] = "🛒 Registrar Venta"
-        st.rerun()
+    # Botones directos con callback
+    st.button("🛒  Nueva Venta", key="btn_nv", use_container_width=True, on_click=ir_a_seccion, args=("🛒 Registrar Venta",))
 
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("📦\nInventario", key="btn_inventario", use_container_width=True):
-            st.session_state['seccion_activa'] = "📦 Productos e Inventario"
-            st.rerun()
+        st.button("📦  Inventario", key="btn_inv", use_container_width=True, on_click=ir_a_seccion, args=("📦 Productos e Inventario",))
     with c2:
-        if st.button("⚠️\nDeudas", key="btn_deudas", use_container_width=True):
-            st.session_state['seccion_activa'] = "👥 Clientes y Deudas"
-            st.rerun()
+        st.button("⚠️  Deudas", key="btn_deu", use_container_width=True, on_click=ir_a_seccion, args=("👥 Clientes y Deudas",))
 
     st.divider()
 
