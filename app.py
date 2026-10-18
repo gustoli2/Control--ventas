@@ -343,7 +343,6 @@ if menu == "🏠 Inicio / Dashboard":
     with c2:
         st.button("👥  Gestión de Clientes", key="btn_deu", use_container_width=True, on_click=ir_a_seccion, args=("👥 Clientes y Cuentas por Cobrar",))
 
-    # --- TARJETA DE ACCESO RÁPIDO AL CALENDARIO ---
     st.button("📅  Calendario Anual de Ventas", key="btn_cal_home", use_container_width=True, on_click=ir_a_seccion, args=("📅 Calendario Anual de Ventas",))
 
     st.divider()
@@ -392,6 +391,10 @@ elif menu == "🛒 Registrar Venta":
     if df_prods.empty:
         st.warning("⚠️ Primero debes agregar productos en la sección 'Productos e Inventario'.")
     else:
+        # Selector de Fecha de la Venta
+        st.markdown('<div class="sub-header-yellow">📅 Fecha de la Venta</div>', unsafe_allow_html=True)
+        fecha_venta_elegida = st.date_input("Selecciona la fecha en la que se realizó la venta", value=date.today())
+
         col_prod, col_cli = st.columns(2)
         
         with col_prod:
@@ -455,18 +458,21 @@ elif menu == "🛒 Registrar Venta":
             if st.button("Confirmar Venta", type="primary", use_container_width=True):
                 conn = conectar_db()
                 cursor = conn.cursor()
-                fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                # Mantener la hora actual exacta combinada con la fecha seleccionada por el usuario
+                hora_actual_str = datetime.now().strftime(" %H:%M:%S")
+                fecha_final_str = fecha_venta_elegida.strftime("%Y-%m-%d") + hora_actual_str
                 
                 cursor.execute('''
                     INSERT INTO ventas (producto_id, cliente_id, cantidad, precio_unitario, costo_unitario, ganancia_total, estado_pago, saldo_pendiente, fecha)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (prod_data['id'], cliente_data['id'], cantidad, prod_data['precio_venta'], prod_data['costo_unitario'], ganancia_estimada, estado_pago_val, saldo_inicial, fecha_actual))
+                ''', (prod_data['id'], cliente_data['id'], cantidad, prod_data['precio_venta'], prod_data['costo_unitario'], ganancia_estimada, estado_pago_val, saldo_inicial, fecha_final_str))
                 
                 cursor.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cantidad, prod_data['id']))
                 conn.commit()
                 conn.close()
                 st.balloons()
-                st.success(f"🎉 ¡Venta registrada exitosamente para {cliente_data['nombre']}!")
+                st.success(f"🎉 ¡Venta registrada exitosamente para {cliente_data['nombre']} con fecha {fecha_venta_elegida.strftime('%d/%m/%Y')}!")
 
 # ---------------------------------------------------------
 # OPCIÓN 2: GESTIÓN DE CLIENTES Y CUENTAS POR COBRAR
