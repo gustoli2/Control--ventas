@@ -11,6 +11,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Inicializar estado de navegación si no existe
+if 'seccion_activa' not in st.session_state:
+    st.session_state['seccion_activa'] = "🏠 Inicio / Dashboard"
+
 # --- ESTILOS CSS PERSONALIZADOS ---
 st.markdown("""
 <style>
@@ -70,22 +74,27 @@ st.markdown("""
         margin-top: 15px;
         margin-bottom: 10px;
     }
-    .quick-card {
-        background-color: #FFF9D6;
-        border-radius: 14px;
-        padding: 15px;
-        text-align: center;
-        border: 1px solid #FFE885;
-        font-weight: 600;
-        color: #333;
-        margin-bottom: 10px;
-    }
     .stat-card {
         background-color: #FFFFFF;
         border-radius: 14px;
         padding: 15px;
         border: 1px solid #EEEEEE;
         box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.03);
+    }
+    
+    /* Estilo para convertir botones estándar en tarjetas amarillas */
+    div.stButton > button.quick-btn {
+        background-color: #FFF9D6 !important;
+        color: #333333 !important;
+        border: 1px solid #FFE885 !important;
+        border-radius: 14px !important;
+        height: 80px !important;
+        font-weight: 600 !important;
+        font-size: 16px !important;
+    }
+    div.stButton > button.quick-btn:hover {
+        background-color: #FFE885 !important;
+        border-color: #FFDE59 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -155,7 +164,19 @@ inicializar_db()
 # --- NAVEGACIÓN EN EL MENÚ LATERAL ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=60)
 st.sidebar.title("Navegación")
-menu = st.sidebar.radio("Ir a:", ["🏠 Inicio / Dashboard", "🛒 Registrar Venta", "👥 Clientes y Deudas", "📦 Productos e Inventario", "📈 Reportes y Métricas"])
+
+opciones_menu = ["🏠 Inicio / Dashboard", "🛒 Registrar Venta", "👥 Clientes y Deudas", "📦 Productos e Inventario", "📈 Reportes y Métricas"]
+
+def cambiar_seccion():
+    st.session_state['seccion_activa'] = st.session_state['radio_menu']
+
+menu = st.sidebar.radio(
+    "Ir a:", 
+    opciones_menu, 
+    index=opciones_menu.index(st.session_state['seccion_activa']),
+    key='radio_menu',
+    on_change=cambiar_seccion
+)
 
 # ---------------------------------------------------------
 # OPCIÓN: INICIO / DASHBOARD
@@ -212,13 +233,20 @@ if menu == "🏠 Inicio / Dashboard":
 
     st.markdown('<div class="quick-access-title">Descubre todo lo que puedes hacer</div>', unsafe_allow_html=True)
     
-    c1, c2, c3 = st.columns(3)
+    # Botones directos interactivos
+    if st.button("🛒\nNueva Venta", key="btn_nueva_venta", use_container_width=True):
+        st.session_state['seccion_activa'] = "🛒 Registrar Venta"
+        st.rerun()
+
+    c1, c2 = st.columns(2)
     with c1:
-        st.markdown('<div class="quick-card">🛒<br>Nueva Venta</div>', unsafe_allow_html=True)
+        if st.button("📦\nInventario", key="btn_inventario", use_container_width=True):
+            st.session_state['seccion_activa'] = "📦 Productos e Inventario"
+            st.rerun()
     with c2:
-        st.markdown('<div class="quick-card">📦<br>Inventario</div>', unsafe_allow_html=True)
-    with c3:
-        st.markdown('<div class="quick-card">⚠️<br>Deudas</div>', unsafe_allow_html=True)
+        if st.button("⚠️\nDeudas", key="btn_deudas", use_container_width=True):
+            st.session_state['seccion_activa'] = "👥 Clientes y Deudas"
+            st.rerun()
 
     st.divider()
 
@@ -440,7 +468,6 @@ elif menu == "👥 Clientes y Deudas":
                 conn = conectar_db()
                 cursor = conn.cursor()
                 
-                # Obtener todas las ventas pendientes del cliente ordenadas por fecha (más antiguas primero)
                 cursor.execute('''
                     SELECT id, saldo_pendiente 
                     FROM ventas 
@@ -456,11 +483,9 @@ elif menu == "👥 Clientes y Deudas":
                         break
                     
                     if abono_restante >= s_pendiente:
-                        # Se paga esta venta completamente
                         abono_restante -= s_pendiente
                         cursor.execute("UPDATE ventas SET saldo_pendiente = 0.0, estado_pago = 'Pagado' WHERE id = ?", (v_id,))
                     else:
-                        # Abono parcial a esta venta
                         nuevo_saldo = s_pendiente - abono_restante
                         cursor.execute("UPDATE ventas SET saldo_pendiente = ? WHERE id = ?", (nuevo_saldo, v_id))
                         abono_restante = 0.0
