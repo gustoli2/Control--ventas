@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Inicializar claves de estado de navegación si no existen
+# Inicializar claves de estado de navegación y carrito si no existen
 if 'menu_radio' not in st.session_state:
     st.session_state['menu_radio'] = "🏠 Inicio / Dashboard"
 
@@ -23,6 +23,9 @@ if 'subseccion_clientes' not in st.session_state:
 
 if 'subseccion_inventario' not in st.session_state:
     st.session_state['subseccion_inventario'] = "📋 Listado de Productos"
+
+if 'carrito_ventas' not in st.session_state:
+    st.session_state['carrito_ventas'] = []
 
 # --- FUNCIÓN PARA OBTENER LA TASA BCV EN TIEMPO REAL ---
 @st.cache_data(ttl=3600)
@@ -374,7 +377,7 @@ if menu == "🏠 Inicio / Dashboard":
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# OPCIÓN 1: REGISTRAR VENTA
+# OPCIÓN 1: REGISTRAR VENTA (CON CARRITO MULTIPRODUCTO)
 # ---------------------------------------------------------
 elif menu == "🛒 Registrar Venta":
     col_header, col_home = st.columns([3, 1])
@@ -391,17 +394,14 @@ elif menu == "🛒 Registrar Venta":
     if df_prods.empty:
         st.warning("⚠️ Primero debes agregar productos en la sección 'Productos e Inventario'.")
     else:
-        st.markdown('<div class="sub-header-yellow">📅 Fecha de la Venta</div>', unsafe_allow_html=True)
-        fecha_venta_elegida = st.date_input("Selecciona la fecha en la que se realizó la venta", value=date.today())
+        # --- SECCIÓN 1: DATOS GENERALES (FECHA Y CLIENTE) ---
+        col_f, col_c = st.columns(2)
+        with col_f:
+            st.markdown('<div class="sub-header-yellow">📅 Fecha de la Venta</div>', unsafe_allow_html=True)
+            fecha_venta_elegida = st.date_input("Selecciona la fecha de la venta", value=date.today())
 
-        col_prod, col_cli = st.columns(2)
-        
-        with col_prod:
-            opciones_productos = {f"{row['nombre']} (Stock: {row['stock']})": row for _, row in df_prods.iterrows()}
-            prod_seleccionado_str = st.selectbox("Selecciona un Producto", list(opciones_productos.keys()))
-            prod_data = opciones_productos[prod_seleccionado_str]
-
-        with col_cli:
+        with col_c:
+            st.markdown('<div class="sub-header-yellow">👤 Cliente</div>', unsafe_allow_html=True)
             opciones_clientes = {"➕ ¡Agregar Nuevo Cliente!": None}
             for _, row in df_clientes.iterrows():
                 opciones_clientes[f"{row['nombre']} ({row['telefono']})"] = row
@@ -429,48 +429,116 @@ elif menu == "🛒 Registrar Venta":
 
         st.divider()
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.info(f"**Precio de Venta:** ${prod_data['precio_venta']:.2f} (~ Bs. {prod_data['precio_venta']*tasa_oficial:,.2f})")
-            st.info(f"**Costo Unitario:** ${prod_data['costo_unitario']:.2f}")
+        # --- SECCIÓN 2: SELECCIÓN Y AGREGADO DE PRODUCTOS AL CARRITO ---
+        st.markdown('<div class="sub-header-yellow">📦 Agregar Productos al Pedido</div>', unsafe_allow_html=True)
         
-        with col2:
-            cantidad = st.number_input("Cantidad a vender", min_value=1, max_value=int(prod_data['stock']) if prod_data['stock'] > 0 else 1, step=1)
-            ganancia_estimada = (prod_data['precio_venta'] - prod_data['costo_unitario']) * cantidad
-            st.success(f"**Ganancia de esta venta:** ${ganancia_estimada:.2f}")
-
-        tipo_pago = st.radio(
-            "Condición de Pago", 
-            ["💵 Pagado de Contado", "📝 Crédito / Cuenta por Cobrar"], 
-            horizontal=True
-        )
-        estado_pago_val = "Pagado" if "Pagado" in tipo_pago else "Pendiente"
+        # Filtrar productos con stock > 0
+        df_prods_disponibles = df_prods[df_prods['stock'] > 0]
         
-        monto_total_venta = prod_data['precio_venta'] * cantidad
-        saldo_inicial = 0.0 if estado_pago_val == "Pagado" else monto_total_venta
-
-        if prod_data['stock'] <= 0:
-            st.error("❌ Producto agotado. Actualiza el stock en el inventario.")
-        elif cliente_data is None:
-            st.warning("⚠️ Primero guarda o selecciona un cliente de la lista para continuar con la venta.")
+        if df_prods_disponibles.empty:
+            st.error("❌ No hay productos con stock disponible para vender.")
         else:
-            if st.button("Confirmar Venta", type="primary", use_container_width=True):
-                conn = conectar_db()
-                cursor = conn.cursor()
-                
-                hora_actual_str = datetime.now().strftime(" %H:%M:%S")
-                fecha_final_str = fecha_venta_elegida.strftime("%Y-%m-%d") + hora_actual_str
-                
-                cursor.execute('''
-                    INSERT INTO ventas (producto_id, cliente_id, cantidad, precio_unitario, costo_unitario, ganancia_total, estado_pago, saldo_pendiente, fecha)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (prod_data['id'], cliente_data['id'], cantidad, prod_data['precio_venta'], prod_data['costo_unitario'], ganancia_estimada, estado_pago_val, saldo_inicial, fecha_final_str))
-                
-                cursor.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cantidad, prod_data['id']))
-                conn.commit()
-                conn.close()
-                st.balloons()
-                st.success(f"🎉 ¡Venta registrada exitosamente para {cliente_data['nombre']} con fecha {fecha_venta_elegida.strftime('%d/%m/%Y')}!")
+            opciones_productos = {f"{row['nombre']} (Stock: {row['stock']})": row for _, row in df_prods_disponibles.iterrows()}
+            prod_seleccionado_str = st.selectbox("Selecciona un Producto", list(opciones_productos.keys()))
+            prod_data = opciones_productos[prod_seleccionado_str]
+
+            # Calcular el stock disponible ajustado restando lo que ya está en el carrito
+            cantidad_ya_en_carrito = sum(item['cantidad'] for item in st.session_state['carrito_ventas'] if item['producto_id'] == prod_data['id'])
+            stock_restringido = int(prod_data['stock']) - cantidad_ya_en_carrito
+
+            col_p1, col_p2, col_p3 = st.columns([2, 1, 1])
+            with col_p1:
+                st.info(f"**Precio:** ${prod_data['precio_venta']:.2f} (~ Bs. {prod_data['precio_venta']*tasa_oficial:,.2f}) | **Costo:** ${prod_data['costo_unitario']:.2f}")
+            with col_p2:
+                if stock_restringido > 0:
+                    cant_a_agregar = st.number_input("Cantidad", min_value=1, max_value=stock_restringido, value=1, step=1)
+                else:
+                    st.warning("⚠️ Límite de stock alcanzado")
+                    cant_a_agregar = 0
+            with col_p3:
+                st.write("")
+                st.write("")
+                if stock_restringido > 0:
+                    if st.button("➕ Agregar al Carrito", type="secondary", use_container_width=True):
+                        st.session_state['carrito_ventas'].append({
+                            'producto_id': prod_data['id'],
+                            'nombre': prod_data['nombre'],
+                            'cantidad': cant_a_agregar,
+                            'precio_unitario': prod_data['precio_venta'],
+                            'costo_unitario': prod_data['costo_unitario'],
+                            'subtotal': prod_data['precio_venta'] * cant_a_agregar,
+                            'ganancia': (prod_data['precio_venta'] - prod_data['costo_unitario']) * cant_a_agregar
+                        })
+                        st.rerun()
+
+        # --- SECCIÓN 3: VER Y GESTIONAR CARRITO ---
+        st.markdown('<div class="sub-header-yellow">🛒 Resumen del Carrito de Ventas</div>', unsafe_allow_html=True)
+        
+        if len(st.session_state['carrito_ventas']) == 0:
+            st.info("🛒 Tu carrito está vacío. Selecciona un producto arriba y presiona 'Agregar al Carrito'.")
+        else:
+            # Renderizar tabla responsiva del carrito
+            for idx, item in enumerate(st.session_state['carrito_ventas']):
+                col_i1, col_i2, col_i3, col_i4, col_i5 = st.columns([3, 1, 2, 2, 1])
+                col_i1.write(f"**{item['nombre']}**")
+                col_i2.write(f"{item['cantidad']} uds.")
+                col_i3.write(f"${item['precio_unitario']:.2f} c/u")
+                col_i4.write(f"**Subtotal: ${item['subtotal']:.2f}**")
+                if col_i5.button("🗑️", key=f"del_cart_{idx}"):
+                    st.session_state['carrito_ventas'].pop(idx)
+                    st.rerun()
+
+            monto_total_pedido = sum(item['subtotal'] for item in st.session_state['carrito_ventas'])
+            ganancia_total_pedido = sum(item['ganancia'] for item in st.session_state['carrito_ventas'])
+            monto_total_pedido_bs = monto_total_pedido * tasa_oficial
+
+            st.divider()
+
+            col_tot1, col_tot2 = st.columns(2)
+            col_tot1.metric("Total General Pedido", f"${monto_total_pedido:,.2f}", f"Bs. {monto_total_pedido_bs:,.2f}")
+            col_tot2.metric("Ganancia Estimada Pedido", f"${ganancia_total_pedido:,.2f}")
+
+            # Condición de pago
+            tipo_pago = st.radio(
+                "Condición de Pago del Pedido", 
+                ["💵 Pagado de Contado", "📝 Crédito / Cuenta por Cobrar"], 
+                horizontal=True
+            )
+            estado_pago_val = "Pagado" if "Pagado" in tipo_pago else "Pendiente"
+
+            if cliente_data is None:
+                st.warning("⚠️ Selecciona un cliente registrado en la parte superior para finalizar la venta.")
+            else:
+                col_b_clear, col_b_confirm = st.columns([1, 2])
+                with col_b_clear:
+                    if st.button("❌ Vaciar Carrito", use_container_width=True):
+                        st.session_state['carrito_ventas'] = []
+                        st.rerun()
+
+                with col_b_confirm:
+                    if st.button("🎉 Confirmar y Registrar Venta Completa", type="primary", use_container_width=True):
+                        conn = conectar_db()
+                        cursor = conn.cursor()
+                        
+                        hora_actual_str = datetime.now().strftime(" %H:%M:%S")
+                        fecha_final_str = fecha_venta_elegida.strftime("%Y-%m-%d") + hora_actual_str
+
+                        for item in st.session_state['carrito_ventas']:
+                            saldo_ini_item = 0.0 if estado_pago_val == "Pagado" else item['subtotal']
+                            
+                            cursor.execute('''
+                                INSERT INTO ventas (producto_id, cliente_id, cantidad, precio_unitario, costo_unitario, ganancia_total, estado_pago, saldo_pendiente, fecha)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ''', (item['producto_id'], cliente_data['id'], item['cantidad'], item['precio_unitario'], item['costo_unitario'], item['ganancia'], estado_pago_val, saldo_ini_item, fecha_final_str))
+                            
+                            cursor.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (item['cantidad'], item['producto_id']))
+
+                        conn.commit()
+                        conn.close()
+
+                        st.session_state['carrito_ventas'] = []
+                        st.balloons()
+                        st.success(f"🎉 ¡Venta multiproducto registrada exitosamente para {cliente_data['nombre']} por un total de ${monto_total_pedido:,.2f}!")
 
 # ---------------------------------------------------------
 # OPCIÓN 2: GESTIÓN DE CLIENTES Y CUENTAS POR COBRAR
@@ -717,7 +785,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 st.success(f"🎉 ¡Abono de ${monto_abono:,.2f} registrado exitosamente para {cliente_info['Cliente']}!")
                 st.rerun()
 
-            # --- NUEVA OPCIÓN: ELIMINAR VENTA CON ERROR ---
+            # --- OPCIÓN: ELIMINAR VENTA CON ERROR ---
             with st.expander("⚠️ ¿Registraste una deuda por error? Eliminar un registro de deuda"):
                 conn = conectar_db()
                 df_ventas_del = pd.read_sql_query('''
