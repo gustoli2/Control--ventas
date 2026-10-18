@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 import urllib.parse
 from datetime import datetime, date
+import calendar
 
 # Configuración de la página
 st.set_page_config(
@@ -158,6 +159,26 @@ st.markdown("""
         border: 1px solid #EEEEEE;
         box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.03);
     }
+    .day-box {
+        background-color: #FFFFFF;
+        border: 1px solid #E0E0E0;
+        border-radius: 10px;
+        padding: 10px;
+        text-align: center;
+        min-height: 90px;
+        margin-bottom: 10px;
+        box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.02);
+    }
+    .day-box-active {
+        background-color: #FFFDE7;
+        border: 2px solid #FBC02D;
+        border-radius: 10px;
+        padding: 10px;
+        text-align: center;
+        min-height: 90px;
+        margin-bottom: 10px;
+        box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.05);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -232,7 +253,14 @@ st.sidebar.title("OLINUTS")
 
 tasa_oficial = st.sidebar.number_input("💵 Tasa BCV Hoy (Bs/$)", min_value=1.0, value=tasa_bcv_auto, format="%.2f")
 
-opciones_menu = ["🏠 Inicio / Dashboard", "🛒 Registrar Venta", "👥 Clientes y Cuentas por Cobrar", "📦 Productos e Inventario", "📈 Reportes y Métricas"]
+opciones_menu = [
+    "🏠 Inicio / Dashboard", 
+    "🛒 Registrar Venta", 
+    "👥 Clientes y Cuentas por Cobrar", 
+    "📦 Productos e Inventario", 
+    "📅 Calendario Anual de Ventas",
+    "📈 Reportes y Métricas"
+]
 
 menu = st.sidebar.radio(
     "Ir a:", 
@@ -804,7 +832,121 @@ elif menu == "📦 Productos e Inventario":
             st.info("No hay productos disponibles para editar.")
 
 # ---------------------------------------------------------
-# OPCIÓN 4: REPORTES Y MÉTRICAS
+# OPCIÓN 4: CALENDARIO ANUAL DE VENTAS
+# ---------------------------------------------------------
+elif menu == "📅 Calendario Anual de Ventas":
+    col_header, col_home = st.columns([3, 1])
+    with col_header:
+        st.markdown('<div class="section-header-yellow">📅 Calendario Anual de Ventas</div>', unsafe_allow_html=True)
+    with col_home:
+        st.button("🏠 Volver al Inicio", key="btn_home_cal", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
+
+    col_anio, col_mes = st.columns(2)
+    with col_anio:
+        anio_sel = st.selectbox("Selecciona el Año", list(range(2024, 2031)), index=2) # 2026 por defecto
+    with col_mes:
+        meses_nombres = {
+            1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 
+            5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto", 
+            9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+        }
+        mes_sel_nombre = st.selectbox("Selecciona el Mes", list(meses_nombres.values()), index=datetime.now().month - 1)
+        mes_sel = [k for k, v in meses_nombres.items() if v == mes_sel_nombre][0]
+
+    st.markdown(f'<div class="sub-header-yellow">📊 Resumen diario de {mes_sel_nombre} {anio_sel}</div>', unsafe_allow_html=True)
+
+    # Consultar ventas del mes seleccionado
+    mes_str = f"{anio_sel}-{mes_sel:02d}"
+    conn = conectar_db()
+    df_ventas_mes = pd.read_sql_query(f'''
+        SELECT v.fecha, (v.cantidad * v.precio_unitario) AS ingreso, v.cantidad, p.nombre AS producto, c.nombre AS cliente
+        FROM ventas v
+        JOIN productos p ON v.producto_id = p.id
+        LEFT JOIN clientes c ON v.cliente_id = c.id
+        WHERE v.fecha LIKE '{mes_str}%'
+    ''', conn)
+    conn.close()
+
+    # Procesar totales por día
+    ventas_por_dia = {}
+    if not df_ventas_mes.empty:
+        df_ventas_mes['dia'] = pd.to_datetime(df_ventas_mes['fecha']).dt.day
+        ventas_por_dia = df_ventas_mes.groupby('dia')['ingreso'].sum().to_dict()
+
+    # Generar matriz del calendario del mes
+    cal = calendar.monthcalendar(anio_sel, mes_sel)
+    dias_semana = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+
+    # Mostrar cabecera de días de la semana
+    cols_dias = st.columns(7)
+    for i, d_nombre in enumerate(dias_semana):
+        cols_dias[i].markdown(f"<div style='text-align: center; font-weight: bold; color: #444;'>{d_nombre}</div>", unsafe_allow_html=True)
+
+    # Renderizar semanas del mes
+    for semana in cal:
+        cols_semana = st.columns(7)
+        for i, dia in enumerate(semana):
+            with cols_semana[i]:
+                if dia == 0:
+                    st.markdown("<div style='color: #CCC; text-align: center; padding: 15px;'>-</div>", unsafe_allow_html=True)
+                else:
+                    monto_dia = ventas_por_dia.get(dia, 0.0)
+                    monto_dia_bs = monto_dia * tasa_oficial
+                    
+                    if monto_dia > 0:
+                        st.markdown(f'''
+                            <div class="day-box-active">
+                                <b style="font-size: 16px; color: #333;">{dia}</b><br>
+                                <span style="color: #00A86B; font-weight: bold; font-size: 13px;">${monto_dia:,.2f}</span><br>
+                                <span style="color: #666; font-size: 10px;">Bs. {monto_dia_bs:,.0f}</span>
+                            </div>
+                        ''', unsafe_allow_html=True)
+                    else:
+                        st.markdown(f'''
+                            <div class="day-box">
+                                <b style="font-size: 16px; color: #777;">{dia}</b><br>
+                                <span style="color: #999; font-size: 12px;">$0.00</span>
+                            </div>
+                        ''', unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown('<div class="sub-header-yellow">🔍 Consultar Detalle de un Día Específico</div>', unsafe_allow_html=True)
+    
+    # Selector de día exacto para ver el detalle de ventas
+    dias_del_mes = list(range(1, calendar.monthrange(anio_sel, mes_sel)[1] + 1))
+    dia_elegido = st.selectbox("Selecciona el día para ver las ventas detalladas", dias_del_mes, index=datetime.now().day - 1 if datetime.now().month == mes_sel and datetime.now().year == anio_sel else 0)
+
+    fecha_busqueda = f"{anio_sel}-{mes_sel:02d}-{dia_elegido:02d}"
+    
+    conn = conectar_db()
+    df_detalle_dia = pd.read_sql_query(f'''
+        SELECT v.id AS 'ID', p.nombre AS 'Producto', c.nombre AS 'Cliente',
+               v.cantidad AS 'Cant', v.precio_unitario AS 'Precio ($)', 
+               (v.cantidad * v.precio_unitario) AS 'Total ($)',
+               v.fecha AS 'Fecha y Hora'
+        FROM ventas v
+        JOIN productos p ON v.producto_id = p.id
+        LEFT JOIN clientes c ON v.cliente_id = c.id
+        WHERE v.fecha LIKE '{fecha_busqueda}%'
+        ORDER BY v.fecha DESC
+    ''', conn)
+    conn.close()
+
+    if not df_detalle_dia.empty:
+        total_dia_usd = df_detalle_dia['Total ($)'].sum()
+        total_dia_bs = total_dia_usd * tasa_oficial
+        
+        col_t1, col_t2 = st.columns(2)
+        col_t1.metric(f"Total Ventas Día {dia_elegido} / {mes_sel_nombre}", f"${total_dia_usd:,.2f}")
+        col_t2.metric("Total en Bolívares", f"Bs. {total_dia_bs:,.2f}")
+        
+        df_detalle_dia['Total (Bs.)'] = df_detalle_dia['Total ($)'] * tasa_oficial
+        st.dataframe(df_detalle_dia, use_container_width=True)
+    else:
+        st.info(f"No se registraron ventas para el día {dia_elegido} de {mes_sel_nombre} de {anio_sel}.")
+
+# ---------------------------------------------------------
+# OPCIÓN 5: REPORTES Y MÉTRICAS
 # ---------------------------------------------------------
 elif menu == "📈 Reportes y Métricas":
     col_header, col_home = st.columns([3, 1])
