@@ -146,8 +146,95 @@ if menu == "🛒 Registrar Venta":
                 st.rerun()
 
 # ---------------------------------------------------------
-# OPCIÓN 2: GESTIÓN DE CLIENTES Y DEUD
-to"])
+# OPCIÓN 2: GESTIÓN DE CLIENTES Y DEUDORES
+# ---------------------------------------------------------
+elif menu == "👥 Clientes":
+    st.header("Gestión de Clientes y Deudas")
+
+    tab1, tab2, tab3 = st.tabs(["📋 Listado General", "➕ Agregar Nuevo Cliente", "⚠️ Clientes Deudores"])
+
+    with tab1:
+        conn = conectar_db()
+        df_cli = pd.read_sql_query("SELECT id AS 'ID', nombre AS 'Nombre', telefono AS 'Teléfono' FROM clientes", conn)
+        conn.close()
+
+        if not df_cli.empty:
+            st.dataframe(df_cli, use_container_width=True)
+        else:
+            st.info("No hay clientes registrados aún.")
+
+    with tab2:
+        with st.form("form_cliente"):
+            nombre_cliente = st.text_input("Nombre Completo del Cliente")
+            telefono_cliente = st.text_input("Número de Teléfono / WhatsApp")
+            guardar_cliente = st.form_submit_button("Guardar Cliente")
+
+            if guardar_cliente:
+                if nombre_cliente.strip() == "":
+                    st.error("El nombre del cliente no puede estar vacío.")
+                else:
+                    conn = conectar_db()
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT INTO clientes (nombre, telefono)
+                        VALUES (?, ?)
+                    ''', (nombre_cliente, telefono_cliente if telefono_cliente.strip() else 'Sin teléfono'))
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Cliente '{nombre_cliente}' agregado correctamente.")
+                    st.rerun()
+
+    with tab3:
+        st.subheader("Listado de Deudas Pendientes por Cobrar")
+        
+        conn = conectar_db()
+        df_deudas = pd.read_sql_query('''
+            SELECT v.id AS 'ID Venta', 
+                   c.nombre AS 'Cliente',
+                   c.telefono AS 'Teléfono',
+                   p.nombre AS 'Producto',
+                   v.cantidad AS 'Cantidad',
+                   (v.cantidad * v.precio_unitario) AS 'Total Deuda ($)',
+                   v.fecha AS 'Fecha'
+            FROM ventas v
+            JOIN clientes c ON v.cliente_id = c.id
+            JOIN productos p ON v.producto_id = p.id
+            WHERE v.estado_pago = 'Pendiente'
+            ORDER BY v.fecha DESC
+        ''', conn)
+        conn.close()
+
+        if df_deudas.empty:
+            st.success("🎉 ¡Excelente! No hay deudas pendientes de cobro en este momento.")
+        else:
+            total_por_cobrar = df_deudas['Total Deuda ($)'].sum()
+            st.metric("Total General en Deudas", f"${total_por_cobrar:,.2f}")
+            
+            st.divider()
+            st.dataframe(df_deudas, use_container_width=True)
+            
+            st.subheader("Registrar Cobro / Abonar Deuda")
+            st.info("Selecciona el **ID de la Venta** que el cliente acaba de pagar para actualizar su estado a 'Pagado'.")
+            
+            ids_pendientes = df_deudas['ID Venta'].tolist()
+            venta_a_pagar = st.selectbox("Selecciona ID de Venta a Liquidar", ids_pendientes)
+            
+            if st.button("✅ Marcar Venta como Pagada", type="primary"):
+                conn = conectar_db()
+                cursor = conn.cursor()
+                cursor.execute("UPDATE ventas SET estado_pago = 'Pagado' WHERE id = ?", (venta_a_pagar,))
+                conn.commit()
+                conn.close()
+                st.success(f"🎉 ¡La venta ID {venta_a_pagar} ha sido marcada como pagada exitosamente!")
+                st.rerun()
+
+# ---------------------------------------------------------
+# OPCIÓN 3: PRODUCTOS E INVENTARIO (CON EDICIÓN)
+# ---------------------------------------------------------
+elif menu == "📦 Productos e Inventario":
+    st.header("Gestión de Inventario")
+
+    tab1, tab2, tab3 = st.tabs(["📋 Listado de Productos", "➕ Agregar Nuevo Producto", "✏️ Editar / Eliminar Producto"])
 
     with tab1:
         conn = conectar_db()
@@ -185,6 +272,66 @@ to"])
                     conn.commit()
                     conn.close()
                     st.success(f"✅ Producto '{nombre}' agregado correctamente.")
+                    st.rerun()
+
+    with tab3:
+        st.subheader("Editar o Eliminar Producto Existente")
+        
+        conn = conectar_db()
+        df_prods_edit = pd.read_sql_query("SELECT * FROM productos", conn)
+        conn.close()
+
+        if df_prods_edit.empty:
+            st.info("No hay productos disponibles para editar.")
+        else:
+            # Selector de producto
+            dict_prods = {f"{row['nombre']} (ID: {row['id']})": row for _, row in df_prods_edit.iterrows()}
+            prod_edit_str = st.selectbox("Selecciona el producto que deseas modificar", list(dict_prods.keys()))
+            prod_seleccionado = dict_prods[prod_edit_str]
+
+            st.divider()
+
+            # Formulario prellenado con la información actual
+            with st.form("form_editar_producto"):
+                nuevo_nombre = st.text_input("Nombre del Producto", value=prod_seleccionado['nombre'])
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    nuevo_costo = st.number_input("Costo Unitario ($)", min_value=0.0, value=float(prod_seleccionado['costo_unitario']), format="%.2f")
+                with col2:
+                    nuevo_precio = st.number_input("Precio de Venta ($)", min_value=0.0, value=float(prod_seleccionado['precio_venta']), format="%.2f")
+                with col3:
+                    nuevo_stock = st.number_input("Stock Disponible", min_value=0, value=int(prod_seleccionado['stock']), step=1)
+
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    actualizar = st.form_submit_button("💾 Actualizar Cambios", type="primary")
+                with col_btn2:
+                    eliminar = st.form_submit_button("🗑️ Eliminar Producto")
+
+                if actualizar:
+                    if nuevo_nombre.strip() == "":
+                        st.error("El nombre del producto no puede estar vacío.")
+                    else:
+                        conn = conectar_db()
+                        cursor = conn.cursor()
+                        cursor.execute('''
+                            UPDATE productos 
+                            SET nombre = ?, costo_unitario = ?, precio_venta = ?, stock = ?
+                            WHERE id = ?
+                        ''', (nuevo_nombre, nuevo_costo, nuevo_precio, nuevo_stock, prod_seleccionado['id']))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ ¡El producto '{nuevo_nombre}' ha sido actualizado exitosamente!")
+                        st.rerun()
+
+                if eliminar:
+                    conn = conectar_db()
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM productos WHERE id = ?", (prod_seleccionado['id'],))
+                    conn.commit()
+                    conn.close()
+                    st.warning(f"🗑️ Producto '{prod_seleccionado['nombre']}' eliminado correctamente.")
                     st.rerun()
 
 # ---------------------------------------------------------
@@ -234,4 +381,3 @@ elif menu == "📈 Reportes y Métricas":
 
         st.subheader("Historial Detallado de Ventas")
         st.dataframe(df_ventas, use_container_width=True)
-        
