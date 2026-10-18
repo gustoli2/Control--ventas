@@ -11,15 +11,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- ESTILOS CSS PERSONALIZADOS (Inspirados en la imagen) ---
+# --- ESTILOS CSS PERSONALIZADOS ---
 st.markdown("""
 <style>
-    /* Estilo general del fondo */
     .stApp {
         background-color: #FAFAFA;
     }
-    
-    /* Header Amarillo Superior */
     .header-container {
         background-color: #FFDE59;
         padding: 20px 20px 10px 20px;
@@ -39,8 +36,6 @@ st.markdown("""
         color: #555555;
         margin-bottom: 10px;
     }
-    
-    /* Tarjeta Blanca Principal ("Tu negocio hoy") */
     .business-card {
         background-color: #FFFFFF;
         border-radius: 16px;
@@ -68,8 +63,6 @@ st.markdown("""
         font-weight: bold;
         font-size: 20px;
     }
-    
-    /* Tarjetas de Accesos Rápidos */
     .quick-access-title {
         font-size: 16px;
         font-weight: bold;
@@ -87,8 +80,6 @@ st.markdown("""
         color: #333;
         margin-bottom: 10px;
     }
-    
-    /* Tarjetas de Estadísticas */
     .stat-card {
         background-color: #FFFFFF;
         border-radius: 14px;
@@ -107,7 +98,6 @@ def inicializar_db():
     conn = conectar_db()
     cursor = conn.cursor()
     
-    # Tabla de Productos
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS productos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,7 +108,6 @@ def inicializar_db():
         )
     ''')
     
-    # Tabla de Clientes
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS clientes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,12 +116,10 @@ def inicializar_db():
         )
     ''')
     
-    # Cliente por defecto
     cursor.execute("SELECT COUNT(*) FROM clientes WHERE id = 1")
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO clientes (id, nombre, telefono) VALUES (1, 'Cliente Mostrador / General', 'S/N')")
 
-    # Tabla de Ventas
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ventas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,7 +136,6 @@ def inicializar_db():
         )
     ''')
     
-    # Compatibilidad
     cursor.execute("PRAGMA table_info(ventas)")
     columnas = [col[1] for col in cursor.fetchall()]
     if 'cliente_id' not in columnas:
@@ -160,7 +146,6 @@ def inicializar_db():
     conn.commit()
     conn.close()
 
-# Inicializar DB
 inicializar_db()
 
 # --- NAVEGACIÓN EN EL MENÚ LATERAL ---
@@ -169,11 +154,9 @@ st.sidebar.title("Navegación")
 menu = st.sidebar.radio("Ir a:", ["🏠 Inicio / Dashboard", "🛒 Registrar Venta", "👥 Clientes y Deudas", "📦 Productos e Inventario", "📈 Reportes y Métricas"])
 
 # ---------------------------------------------------------
-# OPCIÓN: INICIO / DASHBOARD (PÁGINA PRINCIPAL ESTILO APP)
+# OPCIÓN: INICIO / DASHBOARD
 # ---------------------------------------------------------
 if menu == "🏠 Inicio / Dashboard":
-    
-    # Header superior estilo app
     st.markdown("""
         <div class="header-container">
             <div class="header-title">👑 Mi Negocio</div>
@@ -181,7 +164,6 @@ if menu == "🏠 Inicio / Dashboard":
         </div>
     """, unsafe_allow_html=True)
     
-    # Obtener datos para las métricas de hoy
     fecha_hoy_str = date.today().strftime("%Y-%m-%d")
     
     conn = conectar_db()
@@ -193,7 +175,6 @@ if menu == "🏠 Inicio / Dashboard":
         WHERE fecha LIKE '{fecha_hoy_str}%'
     ''', conn)
     
-    # Datos generales del mes actual
     mes_actual_str = date.today().strftime("%Y-%m")
     df_ventas_mes = pd.read_sql_query(f'''
         SELECT v.ganancia_total, p.nombre AS producto, v.cantidad
@@ -207,7 +188,6 @@ if menu == "🏠 Inicio / Dashboard":
     costos_hoy = df_ventas_hoy['costo'].sum() if not df_ventas_hoy.empty else 0.0
     balance_hoy = ventas_hoy - costos_hoy
 
-    # Tarjeta Principal: "Tu negocio hoy"
     st.markdown(f"""
         <div class="business-card">
             <div class="card-title">Tu negocio hoy</div>
@@ -226,7 +206,6 @@ if menu == "🏠 Inicio / Dashboard":
         </div>
     """, unsafe_allow_html=True)
 
-    # Sección "Descubre todo lo que puedes hacer"
     st.markdown('<div class="quick-access-title">Descubre todo lo que puedes hacer</div>', unsafe_allow_html=True)
     
     c1, c2, c3 = st.columns(3)
@@ -239,7 +218,6 @@ if menu == "🏠 Inicio / Dashboard":
 
     st.divider()
 
-    # Sección de Estadísticas
     st.markdown('<div class="quick-access-title">📊 Estadísticas del Mes</div>', unsafe_allow_html=True)
     
     col_stat1, col_stat2 = st.columns(2)
@@ -340,7 +318,11 @@ elif menu == "👥 Clientes y Deudas":
         conn = conectar_db()
         df_cli = pd.read_sql_query("SELECT id AS 'ID', nombre AS 'Nombre', telefono AS 'Teléfono' FROM clientes", conn)
         conn.close()
-        st.dataframe(df_cli, use_container_width=True) if not df_cli.empty else st.info("No hay clientes registrados aún.")
+        
+        if not df_cli.empty:
+            st.dataframe(df_cli, use_container_width=True)
+        else:
+            st.info("No hay clientes registrados aún.")
 
     with tab2:
         with st.form("form_cliente"):
@@ -401,7 +383,11 @@ elif menu == "📦 Productos e Inventario":
         conn = conectar_db()
         df_prods = pd.read_sql_query("SELECT id AS ID, nombre AS Producto, costo_unitario AS 'Costo ($)', precio_venta AS 'Precio ($)', stock AS Stock FROM productos", conn)
         conn.close()
-        st.dataframe(df_prods, use_container_width=True) if not df_prods.empty else st.info("No hay productos registrados aún.")
+        
+        if not df_prods.empty:
+            st.dataframe(df_prods, use_container_width=True)
+        else:
+            st.info("No hay productos registrados aún.")
 
     with tab2:
         with st.form("form_producto"):
@@ -459,6 +445,8 @@ elif menu == "📦 Productos e Inventario":
                     conn.close()
                     st.warning("🗑️ Producto eliminado.")
                     st.rerun()
+        else:
+            st.info("No hay productos disponibles para editar.")
 
 # ---------------------------------------------------------
 # OPCIÓN 4: REPORTES Y MÉTRICAS
@@ -488,4 +476,4 @@ elif menu == "📈 Reportes y Métricas":
         st.dataframe(df_ventas, use_container_width=True)
     else:
         st.info("Aún no hay ventas registradas para generar reportes.")
-                                    
+    
