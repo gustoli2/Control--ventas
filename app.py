@@ -307,7 +307,7 @@ elif menu == "🛒 Registrar Venta":
                 st.success(f"🎉 ¡Venta registrada exitosamente para {cliente_data['nombre']}!")
 
 # ---------------------------------------------------------
-# OPCIÓN 2: GESTIÓN DE CLIENTES Y DEUDAS (INCLUYE EDICIÓN)
+# OPCIÓN 2: GESTIÓN DE CLIENTES Y DEUDAS
 # ---------------------------------------------------------
 elif menu == "👥 Clientes y Deudas":
     st.header("👥 Gestión de Clientes y Deudas")
@@ -378,7 +378,6 @@ elif menu == "👥 Clientes y Deudas":
                     else:
                         conn = conectar_db()
                         cursor = conn.cursor()
-                        # Reasignar sus ventas al cliente general (ID 1) para no romper registros
                         cursor.execute("UPDATE ventas SET cliente_id = 1 WHERE cliente_id = ?", (cli_sel['id'],))
                         cursor.execute("DELETE FROM clientes WHERE id=?", (cli_sel['id'],))
                         conn.commit()
@@ -389,34 +388,43 @@ elif menu == "👥 Clientes y Deudas":
             st.info("No hay clientes disponibles para editar.")
 
     with tab4:
-        st.subheader("Listado de Deudas Pendientes")
+        st.subheader("Listado de Deudas Pendientes por Cliente")
         conn = conectar_db()
-        df_deudas = pd.read_sql_query('''
-            SELECT v.id AS 'ID Venta', c.nombre AS 'Cliente', c.telefono AS 'Teléfono',
-                   p.nombre AS 'Producto', v.cantidad AS 'Cantidad',
-                   (v.cantidad * v.precio_unitario) AS 'Total Deuda ($)', v.fecha AS 'Fecha'
+        df_deudas_resumen = pd.read_sql_query('''
+            SELECT c.id AS cliente_id,
+                   c.nombre AS 'Cliente',
+                   c.telefono AS 'Teléfono',
+                   SUM(v.cantidad * v.precio_unitario) AS 'Total Deuda ($)',
+                   COUNT(v.id) AS 'Cant. Deudas'
             FROM ventas v
             JOIN clientes c ON v.cliente_id = c.id
-            JOIN productos p ON v.producto_id = p.id
             WHERE v.estado_pago = 'Pendiente'
-            ORDER BY v.fecha DESC
+            GROUP BY c.id, c.nombre, c.telefono
         ''', conn)
         conn.close()
 
-        if df_deudas.empty:
+        if df_deudas_resumen.empty:
             st.success("🎉 ¡No hay deudas pendientes en este momento!")
         else:
-            st.metric("Total General en Deudas", f"${df_deudas['Total Deuda ($)'].sum():,.2f}")
-            st.dataframe(df_deudas, use_container_width=True)
+            total_general = df_deudas_resumen['Total Deuda ($)'].sum()
+            st.metric("Total General en Deudas", f"${total_general:,.2f}")
             
-            venta_a_pagar = st.selectbox("Selecciona ID de Venta a Liquidar", df_deudas['ID Venta'].tolist())
-            if st.button("✅ Marcar Venta como Pagada", type="primary"):
+            df_mostrar = df_deudas_resumen[['Cliente', 'Teléfono', 'Cant. Deudas', 'Total Deuda ($)']]
+            st.dataframe(df_mostrar, use_container_width=True)
+            
+            st.subheader("Liquidar Deuda de un Cliente")
+            
+            opciones_clientes_deuda = {f"{row['Cliente']} (Deuda: ${row['Total Deuda ($)']:,.2f})": row['cliente_id'] for _, row in df_deudas_resumen.iterrows()}
+            cliente_a_liquidar_str = st.selectbox("Selecciona el Cliente a Pagar", list(opciones_clientes_deuda.keys()))
+            cliente_id_sel = opciones_clientes_deuda[cliente_a_liquidar_str]
+            
+            if st.button("✅ Liquidar Deuda del Cliente", type="primary"):
                 conn = conectar_db()
                 cursor = conn.cursor()
-                cursor.execute("UPDATE ventas SET estado_pago = 'Pagado' WHERE id = ?", (venta_a_pagar,))
+                cursor.execute("UPDATE ventas SET estado_pago = 'Pagado' WHERE cliente_id = ? AND estado_pago = 'Pendiente'", (cliente_id_sel,))
                 conn.commit()
                 conn.close()
-                st.success("🎉 ¡Venta marcada como pagada!")
+                st.success("🎉 ¡Las deudas de este cliente han sido liquidadas exitosamente!")
                 st.rerun()
 
 # ---------------------------------------------------------
