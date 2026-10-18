@@ -303,9 +303,32 @@ elif menu == "🛒 Registrar Venta":
             prod_data = opciones_productos[prod_seleccionado_str]
 
         with col_cli:
-            opciones_clientes = {f"{row['nombre']} ({row['telefono']})": row for _, row in df_clientes.iterrows()}
+            # Lista de opciones con la alternativa para agregar un cliente nuevo directamente
+            opciones_clientes = {"➕ ¡Agregar Nuevo Cliente!": None}
+            for _, row in df_clientes.iterrows():
+                opciones_clientes[f"{row['nombre']} ({row['telefono']})"] = row
+                
             cliente_seleccionado_str = st.selectbox("Selecciona un Cliente", list(opciones_clientes.keys()))
-            cliente_data = opciones_clientes[cliente_seleccionado_str]
+            
+            # Si el usuario elige crear un cliente nuevo rápido
+            if cliente_seleccionado_str == "➕ ¡Agregar Nuevo Cliente!":
+                with st.expander("👤 Registrar Nuevo Cliente Rápido", expanded=True):
+                    nuevo_nombre = st.text_input("Nombre Completo del Cliente", key="nv_cli_nom")
+                    nuevo_tel = st.text_input("Teléfono / WhatsApp", key="nv_cli_tel")
+                    if st.button("💾 Guardar Cliente", use_container_width=True, type="primary"):
+                        if nuevo_nombre.strip() != "":
+                            conn = conectar_db()
+                            cursor = conn.cursor()
+                            cursor.execute("INSERT INTO clientes (nombre, telefono) VALUES (?, ?)", (nuevo_nombre, nuevo_tel if nuevo_tel.strip() else 'Sin teléfono'))
+                            conn.commit()
+                            conn.close()
+                            st.success(f"✅ Cliente '{nuevo_nombre}' guardado. Por favor selecciónalo en la lista.")
+                            st.rerun()
+                        else:
+                            st.error("El nombre del cliente no puede estar vacío.")
+                cliente_data = None
+            else:
+                cliente_data = opciones_clientes[cliente_seleccionado_str]
 
         st.divider()
 
@@ -331,6 +354,8 @@ elif menu == "🛒 Registrar Venta":
 
         if prod_data['stock'] <= 0:
             st.error("❌ Producto agotado. Actualiza el stock en el inventario.")
+        elif cliente_data is None:
+            st.warning("⚠️ Primero guarda o selecciona un cliente de la lista para continuar con la venta.")
         else:
             if st.button("Confirmar Venta", type="primary", use_container_width=True):
                 conn = conectar_db()
