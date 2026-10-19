@@ -265,6 +265,7 @@ tasa_oficial = st.sidebar.number_input("💵 Tasa BCV Hoy (Bs/$)", min_value=1.0
 opciones_menu = [
     "🏠 Inicio / Dashboard", 
     "🛒 Registrar Venta", 
+    "💰 Transacciones Pagadas",
     "👥 Clientes y Cuentas por Cobrar", 
     "📦 Productos e Inventario", 
     "📅 Calendario Anual de Ventas",
@@ -330,6 +331,7 @@ if menu == "🏠 Inicio / Dashboard":
     with c2:
         st.button("👥  Gestión de Clientes", key="btn_deu", use_container_width=True, on_click=ir_a_seccion, args=("👥 Clientes y Cuentas por Cobrar",))
 
+    st.button("💰  Transacciones Pagadas", key="btn_trans_pag", use_container_width=True, on_click=ir_a_seccion, args=("💰 Transacciones Pagadas",))
     st.button("📅  Calendario Anual de Ventas", key="btn_cal_home", use_container_width=True, on_click=ir_a_seccion, args=("📅 Calendario Anual de Ventas",))
 
     st.divider()
@@ -536,6 +538,83 @@ elif menu == "🛒 Registrar Venta":
                             st.success(f"🎉 ¡Venta registrada exitosamente para {cliente_data['nombre']} por un total de ${monto_total_pedido:,.2f}!")
                         except Exception as e:
                             st.error(f"❌ Error al registrar la venta: {e}")
+
+# ---------------------------------------------------------
+# TRANSACCIONES PAGADAS
+# ---------------------------------------------------------
+elif menu == "💰 Transacciones Pagadas":
+    col_header, col_home = st.columns([3, 1])
+    with col_header:
+        st.markdown('<div class="section-header-yellow">💰 Transacciones Pagadas</div>', unsafe_allow_html=True)
+    with col_home:
+        st.button("🏠 Volver al Inicio", key="btn_home_tp", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
+
+    st.markdown('<div class="sub-header-yellow">📅 Filtrar Pagos por Fecha</div>', unsafe_allow_html=True)
+    
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        fecha_ini = st.date_input("Fecha Inicial", value=date.today().replace(day=1))
+    with col_f2:
+        fecha_fin = st.date_input("Fecha Final", value=date.today())
+
+    res_p = supabase.table("ventas").select("id, cliente_id, producto_id, cantidad, precio_unitario, ganancia_total, estado_pago, fecha, clientes(nombre, telefono), productos(nombre)").eq("estado_pago", "Pagado").order("fecha", desc=True).execute()
+    df_pagadas = pd.DataFrame(res_p.data)
+
+    if not df_pagadas.empty:
+        df_pagadas['fecha_dt'] = pd.to_datetime(df_pagadas['fecha']).dt.date
+        df_filt_pagadas = df_pagadas[(df_pagadas['fecha_dt'] >= fecha_ini) & (df_pagadas['fecha_dt'] <= fecha_fin)].copy()
+
+        if df_filt_pagadas.empty:
+            st.info(f"No hay transacciones pagadas entre el {fecha_ini.strftime('%d/%m/%Y')} y el {fecha_fin.strftime('%d/%m/%Y')}.")
+        else:
+            df_filt_pagadas['Cliente'] = df_filt_pagadas['clientes'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Cliente')
+            df_filt_pagadas['Producto'] = df_filt_pagadas['productos'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Producto')
+            df_filt_pagadas['Monto Total ($)'] = df_filt_pagadas['cantidad'] * df_filt_pagadas['precio_unitario']
+            df_filt_pagadas['Monto Total (Bs.)'] = df_filt_pagadas['Monto Total ($)'] * tasa_oficial
+
+            total_recaudado = float(df_filt_pagadas['Monto Total ($)'].sum())
+            total_ganancia = float(df_filt_pagadas['ganancia_total'].sum())
+
+            c_met1, c_met2 = st.columns(2)
+            c_met1.metric("Total Recaudado Período", f"${total_recaudado:,.2f}", f"Bs. {total_recaudado * tasa_oficial:,.2f}")
+            c_met2.metric("Ganancia Total Período", f"${total_ganancia:,.2f}")
+
+            st.divider()
+
+            df_display = df_filt_pagadas[['id', 'Cliente', 'Producto', 'cantidad', 'precio_unitario', 'Monto Total ($)', 'Monto Total (Bs.)', 'ganancia_total', 'fecha']].copy()
+            df_display.rename(columns={
+                'id': 'ID Venta',
+                'cantidad': 'Cantidad',
+                'precio_unitario': 'Precio Unit ($)',
+                'ganancia_total': 'Ganancia ($)',
+                'fecha': 'Fecha / Hora'
+            }, inplace=True)
+
+            st.dataframe(df_display, use_container_width=True)
+
+            # Opción para anular pago por error
+            with st.expander("🗑️ Anular / Borrar una Transacción Pagada (En caso de error)"):
+                dict_pagos_del = {
+                    f"ID #{row['id']} - {row['Cliente']} | {row['Producto']} ({row['cantidad']} uds) - ${row['Monto Total ($)']:.2f} ({row['fecha']})": row 
+                    for _, row in df_filt_pagadas.iterrows()
+                }
+                pago_sel_del_str = st.selectbox("Selecciona la transacción a anular", list(dict_pagos_del.keys()))
+                p_del_info = dict_pagos_del[pago_sel_del_str]
+
+                if st.button("🗑️ Anular Transacción y Restituir Inventario", type="primary", use_container_width=True):
+                    try:
+                        res_p_curr = supabase.table("productos").select("stock").eq("id", int(p_del_info['producto_id'])).execute()
+                        if res_p_curr.data:
+                            stock_act = int(res_p_curr.data[0]['stock'])
+                            supabase.table("productos").update({"stock": stock_act + int(p_del_info['cantidad'])}).eq("id", int(p_del_info['producto_id'])).execute()
+
+                        supabase.table("ventas").delete().eq("id", int(p_del_info['id'])).execute()
+                        st.warning(f"🗑️ Transacción #{p_del_info['id']} anulada correctamente.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al anular la transacción: {e}")
+    else:
+        st.info("Aún no hay ventas o pagos registrados como completados.")
 
 # ---------------------------------------------------------
 # GESTIÓN DE CLIENTES Y CUENTAS POR COBRAR
