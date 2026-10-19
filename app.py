@@ -25,6 +25,9 @@ if 'subseccion_clientes' not in st.session_state:
 if 'subseccion_inventario' not in st.session_state:
     st.session_state['subseccion_inventario'] = "📋 Listado de Productos"
 
+if 'filtro_inv' not in st.session_state:
+    st.session_state['filtro_inv'] = "Todas"
+
 if 'carrito_ventas' not in st.session_state:
     st.session_state['carrito_ventas'] = []
 
@@ -175,6 +178,78 @@ st.markdown("""
     }
     .day-box-active {
         background-color: #FFFDE7; border: 2px solid #FBC02D; border-radius: 10px; padding: 10px; text-align: center; min-height: 95px; margin-bottom: 10px;
+    }
+
+    /* ESTILOS CATÁLOGO DE PRODUCTOS */
+    .product-card {
+        background-color: #FFFFFF;
+        border: 1px solid #E0E0E0;
+        border-radius: 18px;
+        padding: 16px;
+        margin-bottom: 14px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.03);
+    }
+    .product-icon-box {
+        background-color: #F3E5F5;
+        border-radius: 14px;
+        width: 75px;
+        height: 75px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 38px;
+        flex-shrink: 0;
+    }
+    .product-info {
+        flex-grow: 1;
+    }
+    .product-title {
+        font-size: 20px !important;
+        font-weight: bold;
+        color: #222222;
+        margin-bottom: 4px;
+    }
+    .badge-no-stock {
+        background-color: #FFEBEE;
+        color: #C62828;
+        font-size: 14px !important;
+        font-weight: bold;
+        padding: 4px 10px;
+        border-radius: 12px;
+        display: inline-block;
+        margin-bottom: 6px;
+    }
+    .badge-low-stock {
+        background-color: #FFF3E0;
+        color: #E65100;
+        font-size: 14px !important;
+        font-weight: bold;
+        padding: 4px 10px;
+        border-radius: 12px;
+        display: inline-block;
+        margin-bottom: 6px;
+    }
+    .badge-in-stock {
+        background-color: #E8F5E9;
+        color: #2E7D32;
+        font-size: 14px !important;
+        font-weight: bold;
+        padding: 4px 10px;
+        border-radius: 12px;
+        display: inline-block;
+        margin-bottom: 6px;
+    }
+    .product-price {
+        font-size: 22px !important;
+        font-weight: bold;
+        color: #111111;
+    }
+    .product-price-bs {
+        font-size: 14px !important;
+        color: #666666;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -656,14 +731,11 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
                 if st.button("🗑️ Eliminar Venta y Restablecer Inventario", type="primary", use_container_width=True):
                     try:
-                        # 1. Obtener stock actual del producto
                         res_p_curr = supabase.table("productos").select("stock").eq("id", int(v_del_info['producto_id'])).execute()
                         if res_p_curr.data:
                             stock_actual = int(res_p_curr.data[0]['stock'])
-                            # Restituir stock sumando la cantidad cancelada
                             supabase.table("productos").update({"stock": stock_actual + int(v_del_info['cantidad'])}).eq("id", int(v_del_info['producto_id'])).execute()
                         
-                        # 2. Eliminar el registro de venta
                         supabase.table("ventas").delete().eq("id", int(v_del_info['id'])).execute()
                         
                         st.warning(f"🗑️ Registro de deuda #{v_del_info['id']} eliminado y stock restituido.")
@@ -730,11 +802,86 @@ elif menu == "📦 Productos e Inventario":
     if sub_inv == "📋 Listado de Productos":
         res_p = supabase.table("productos").select("id, nombre, costo_unitario, precio_venta, stock").order("nombre").execute()
         df_prods = pd.DataFrame(res_p.data)
+        
         if not df_prods.empty:
-            df_prods['Precio (Bs.)'] = df_prods['precio_venta'] * tasa_oficial
-            st.dataframe(df_prods, use_container_width=True)
+            total_referencias = len(df_prods)
+            df_prods['val_costo_tot'] = df_prods['costo_unitario'] * df_prods['stock']
+            costo_total_inv = float(df_prods['val_costo_tot'].sum())
+
+            # Tarjetas Métricas
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                st.markdown(f"""
+                    <div class="business-card" style="padding: 16px; text-align: center; margin-bottom: 15px;">
+                        <span style="color: #666; font-size: 16px;">Total de referencias</span>
+                        <div style="font-size: 32px; font-weight: bold; color: #111;">{total_referencias}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            with col_m2:
+                st.markdown(f"""
+                    <div class="business-card" style="padding: 16px; text-align: center; margin-bottom: 15px;">
+                        <span style="color: #666; font-size: 16px;">Costo total inventario</span>
+                        <div style="font-size: 32px; font-weight: bold; color: #111;">${costo_total_inv:,.2f}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            # Buscador y Filtros
+            busq_prod = st.text_input("🔍 Buscar producto...", placeholder="Escribe para buscar...")
+            
+            f_col1, f_col2, f_col3 = st.columns(3)
+            with f_col1:
+                if st.button("🏷️ Todas", use_container_width=True):
+                    st.session_state['filtro_inv'] = "Todas"
+            with f_col2:
+                if st.button("⚠️ Unidades bajas", use_container_width=True):
+                    st.session_state['filtro_inv'] = "Unidades bajas"
+            with f_col3:
+                if st.button("✅ Disponibles", use_container_width=True):
+                    st.session_state['filtro_inv'] = "Disponibles"
+
+            # Aplicar Filtros
+            df_filtered = df_prods.copy()
+            if busq_prod.strip() != "":
+                df_filtered = df_filtered[df_filtered['nombre'].str.contains(busq_prod, case=False, na=False)]
+
+            if st.session_state['filtro_inv'] == "Unidades bajas":
+                df_filtered = df_filtered[df_filtered['stock'] <= 3]
+            elif st.session_state['filtro_inv'] == "Disponibles":
+                df_filtered = df_filtered[df_filtered['stock'] > 0]
+
+            st.caption(f"Mostrando productos: **{st.session_state['filtro_inv']}** ({len(df_filtered)} items)")
+
+            if df_filtered.empty:
+                st.info("No hay productos que coincidan con el filtro seleccionado.")
+            else:
+                for _, p_row in df_filtered.iterrows():
+                    p_name = p_row['nombre']
+                    p_stock = int(p_row['stock'])
+                    p_precio = float(p_row['precio_venta'])
+                    p_precio_bs = p_precio * tasa_oficial
+
+                    # Badge según stock
+                    if p_stock == 0:
+                        badge_html = '<span class="badge-no-stock">No disponible</span>'
+                    elif p_stock <= 3:
+                        badge_html = f'<span class="badge-low-stock">⚠️ Pocas unidades: {p_stock} uds</span>'
+                    else:
+                        badge_html = f'<span class="badge-in-stock">Disponible: {p_stock} uds</span>'
+
+                    st.markdown(f"""
+                        <div class="product-card">
+                            <div class="product-icon-box">🥜</div>
+                            <div class="product-info">
+                                <div class="product-title">{p_name}</div>
+                                {badge_html}<br>
+                                <span class="product-price">${p_precio:,.2f}</span> 
+                                <span class="product-price-bs">(~ Bs. {p_precio_bs:,.2f})</span>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+
         else:
-            st.info("No hay productos registrados.")
+            st.info("No hay productos registrados en el inventario.")
 
     elif sub_inv == "➕ Agregar Nuevo Producto":
         st.markdown('<div class="sub-header-yellow">➕ Agregar Nuevo Producto</div>', unsafe_allow_html=True)
