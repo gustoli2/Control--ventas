@@ -42,12 +42,12 @@ supabase = init_supabase()
 
 def inicializar_db():
     # Asegurar cliente mostrador id = 1
-    res = supabase.table("clientes").select("id").eq("id", 1).execute()
-    if not res.data:
-        try:
+    try:
+        res = supabase.table("clientes").select("id").eq("id", 1).execute()
+        if not res.data:
             supabase.table("clientes").insert({"id": 1, "nombre": "Cliente Mostrador / General", "telefono": "S/N"}).execute()
-        except Exception:
-            pass
+    except Exception:
+        pass
 
 inicializar_db()
 
@@ -334,9 +334,15 @@ elif menu == "🛒 Registrar Venta":
                     nuevo_tel = st.text_input("Teléfono / WhatsApp", key="nv_cli_tel")
                     if st.button("💾 Guardar Cliente", use_container_width=True, type="primary"):
                         if nuevo_nombre.strip() != "":
-                            supabase.table("clientes").insert({"nombre": nuevo_nombre, "telefono": nuevo_tel if nuevo_tel.strip() else 'Sin teléfono'}).execute()
-                            st.success(f"✅ Cliente '{nuevo_nombre}' guardado. Por favor selecciónalo en la lista.")
-                            st.rerun()
+                            try:
+                                supabase.table("clientes").insert({
+                                    "nombre": str(nuevo_nombre.strip()), 
+                                    "telefono": str(nuevo_tel.strip() if nuevo_tel.strip() else 'Sin teléfono')
+                                }).execute()
+                                st.success(f"✅ Cliente '{nuevo_nombre}' guardado. Por favor selecciónalo en la lista.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Error al guardar cliente: {e}")
                         else:
                             st.error("El nombre del cliente no puede estar vacío.")
                 cliente_data = None
@@ -380,11 +386,11 @@ elif menu == "🛒 Registrar Venta":
                         st.session_state['carrito_ventas'].append({
                             'producto_id': prod_data['id'],
                             'nombre': prod_data['nombre'],
-                            'cantidad': cant_a_agregar,
+                            'cantidad': int(cant_a_agregar),
                             'precio_unitario': float(prod_data['precio_venta']),
                             'costo_unitario': float(prod_data['costo_unitario']),
-                            'subtotal': float(prod_data['precio_venta']) * cant_a_agregar,
-                            'ganancia': (float(prod_data['precio_venta']) - float(prod_data['costo_unitario'])) * cant_a_agregar
+                            'subtotal': float(prod_data['precio_venta']) * int(cant_a_agregar),
+                            'ganancia': (float(prod_data['precio_venta']) - float(prod_data['costo_unitario'])) * int(cant_a_agregar)
                         })
                         st.rerun()
 
@@ -426,32 +432,35 @@ elif menu == "🛒 Registrar Venta":
 
                 with col_b_confirm:
                     if st.button("🎉 Confirmar y Registrar Venta Completa", type="primary", use_container_width=True):
-                        hora_actual_str = datetime.now().strftime(" %H:%M:%S")
-                        fecha_final_str = fecha_venta_elegida.strftime("%Y-%m-%d") + hora_actual_str
+                        try:
+                            hora_actual_str = datetime.now().strftime(" %H:%M:%S")
+                            fecha_final_str = fecha_venta_elegida.strftime("%Y-%m-%d") + hora_actual_str
 
-                        for item in st.session_state['carrito_ventas']:
-                            saldo_ini_item = 0.0 if estado_pago_val == "Pagado" else item['subtotal']
-                            
-                            supabase.table("ventas").insert({
-                                "producto_id": int(item['producto_id']),
-                                "cliente_id": int(cliente_data['id']),
-                                "cantidad": int(item['cantidad']),
-                                "precio_unitario": float(item['precio_unitario']),
-                                "costo_unitario": float(item['costo_unitario']),
-                                "ganancia_total": float(item['ganancia']),
-                                "estado_pago": estado_pago_val,
-                                "saldo_pendiente": float(saldo_ini_item),
-                                "fecha": fecha_final_str
-                            }).execute()
-                            
-                            # Actualizar Stock
-                            stock_actual = int(df_prods[df_prods['id'] == item['producto_id']]['stock'].values[0])
-                            nuevo_stock = stock_actual - int(item['cantidad'])
-                            supabase.table("productos").update({"stock": nuevo_stock}).eq("id", item['producto_id']).execute()
+                            for item in st.session_state['carrito_ventas']:
+                                saldo_ini_item = 0.0 if estado_pago_val == "Pagado" else item['subtotal']
+                                
+                                supabase.table("ventas").insert({
+                                    "producto_id": int(item['producto_id']),
+                                    "cliente_id": int(cliente_data['id']),
+                                    "cantidad": int(item['cantidad']),
+                                    "precio_unitario": float(item['precio_unitario']),
+                                    "costo_unitario": float(item['costo_unitario']),
+                                    "ganancia_total": float(item['ganancia']),
+                                    "estado_pago": str(estado_pago_val),
+                                    "saldo_pendiente": float(saldo_ini_item),
+                                    "fecha": str(fecha_final_str)
+                                }).execute()
+                                
+                                # Actualizar Stock
+                                stock_actual = int(df_prods[df_prods['id'] == item['producto_id']]['stock'].values[0])
+                                nuevo_stock = stock_actual - int(item['cantidad'])
+                                supabase.table("productos").update({"stock": int(nuevo_stock)}).eq("id", int(item['producto_id'])).execute()
 
-                        st.session_state['carrito_ventas'] = []
-                        st.balloons()
-                        st.success(f"🎉 ¡Venta registrada exitosamente para {cliente_data['nombre']} por un total de ${monto_total_pedido:,.2f}!")
+                            st.session_state['carrito_ventas'] = []
+                            st.balloons()
+                            st.success(f"🎉 ¡Venta registrada exitosamente para {cliente_data['nombre']} por un total de ${monto_total_pedido:,.2f}!")
+                        except Exception as e:
+                            st.error(f"❌ Error al registrar la venta: {e}")
 
 # ---------------------------------------------------------
 # GESTIÓN DE CLIENTES Y CUENTAS POR COBRAR
@@ -496,9 +505,17 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             if guardar_cliente:
                 if nombre_cliente.strip() != "":
-                    supabase.table("clientes").insert({"nombre": nombre_cliente, "telefono": telefono_cliente if telefono_cliente.strip() else 'Sin teléfono'}).execute()
-                    st.success(f"✅ Cliente '{nombre_cliente}' agregado.")
-                    st.rerun()
+                    try:
+                        supabase.table("clientes").insert({
+                            "nombre": str(nombre_cliente.strip()), 
+                            "telefono": str(telefono_cliente.strip() if telefono_cliente.strip() else 'Sin teléfono')
+                        }).execute()
+                        st.success(f"✅ Cliente '{nombre_cliente}' agregado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al guardar cliente: {e}")
+                else:
+                    st.error("El nombre no puede estar vacío.")
 
     elif submenu == "✏️ Editar / Eliminar":
         st.markdown('<div class="sub-header-yellow">✏️ Editar o Eliminar Cliente</div>', unsafe_allow_html=True)
@@ -518,18 +535,27 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 with col_b2: elim_cli = st.form_submit_button("🗑️ Eliminar")
 
                 if act_cli:
-                    supabase.table("clientes").update({"nombre": n_nombre, "telefono": n_telefono}).eq("id", cli_sel['id']).execute()
-                    st.success("✅ Cliente actualizado.")
-                    st.rerun()
+                    try:
+                        supabase.table("clientes").update({
+                            "nombre": str(n_nombre.strip()), 
+                            "telefono": str(n_telefono.strip())
+                        }).eq("id", int(cli_sel['id'])).execute()
+                        st.success("✅ Cliente actualizado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al actualizar: {e}")
 
                 if elim_cli:
                     if cli_sel['id'] == 1:
                         st.error("❌ No se puede eliminar el cliente general por defecto.")
                     else:
-                        supabase.table("ventas").update({"cliente_id": 1}).eq("cliente_id", cli_sel['id']).execute()
-                        supabase.table("clientes").delete().eq("id", cli_sel['id']).execute()
-                        st.warning("🗑️ Cliente eliminado.")
-                        st.rerun()
+                        try:
+                            supabase.table("ventas").update({"cliente_id": 1}).eq("cliente_id", int(cli_sel['id'])).execute()
+                            supabase.table("clientes").delete().eq("id", int(cli_sel['id'])).execute()
+                            st.warning("🗑️ Cliente eliminado.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error al eliminar: {e}")
 
     elif submenu == "📋 Cuentas por Cobrar":
         res_v = supabase.table("ventas").select("id, cliente_id, saldo_pendiente, clientes(id, nombre, telefono)").eq("estado_pago", "Pendiente").gt("saldo_pendiente", 0).execute()
@@ -559,7 +585,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
             num_wa = "58" + tel_bruto[1:] if tel_bruto.startswith("0") else tel_bruto
-            texto_msj = f"Hola {cliente_info['Cliente']},\n\nQueremos recordarte que tienes pagos pendientes de ${deuda_maxima:,.2f} con Olinuts.Nada mejor que llevar tus cuentas al dia, por eso no olvides realizar los pagos, Que tengas un feliz día"
+            texto_msj = f"Hola {cliente_info['Cliente']},\n\nQueremos recordarte que tienes pagos pendientes de ${deuda_maxima:,.2f} con Olinuts."
             link_wa = f"https://wa.me/{num_wa}?text={urllib.parse.quote(texto_msj)}"
 
             st.markdown(f'<a href="{link_wa}" target="_blank">📲 Enviar Recordatorio por WhatsApp a {cliente_info["Cliente"]}</a>', unsafe_allow_html=True)
@@ -572,17 +598,17 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             if btn_abonar:
                 res_pend = supabase.table("ventas").select("id, saldo_pendiente").eq("cliente_id", cliente_id_sel).eq("estado_pago", "Pendiente").gt("saldo_pendiente", 0).order("fecha").execute()
-                abono_rest = monto_abono
+                abono_rest = float(monto_abono)
 
                 for v_item in res_pend.data:
                     if abono_rest <= 0: break
                     s_pend = float(v_item['saldo_pendiente'])
                     if abono_rest >= s_pend:
                         abono_rest -= s_pend
-                        supabase.table("ventas").update({"saldo_pendiente": 0.0, "estado_pago": "Pagado"}).eq("id", v_item['id']).execute()
+                        supabase.table("ventas").update({"saldo_pendiente": 0.0, "estado_pago": "Pagado"}).eq("id", int(v_item['id'])).execute()
                     else:
                         nuevo_s = s_pend - abono_rest
-                        supabase.table("ventas").update({"saldo_pendiente": nuevo_s}).eq("id", v_item['id']).execute()
+                        supabase.table("ventas").update({"saldo_pendiente": float(nuevo_s)}).eq("id", int(v_item['id'])).execute()
                         abono_rest = 0.0
 
                 st.success(f"🎉 Abono de ${monto_abono:,.2f} registrado exitosamente.")
@@ -664,14 +690,25 @@ elif menu == "📦 Productos e Inventario":
                 with col_b2: elim = st.form_submit_button("🗑️ Eliminar")
 
                 if act:
-                    supabase.table("productos").update({"nombre": n_nombre, "costo_unitario": n_costo, "precio_venta": n_precio, "stock": n_stock}).eq("id", prod_sel['id']).execute()
-                    st.success("✅ Producto actualizado.")
-                    st.rerun()
+                    try:
+                        supabase.table("productos").update({
+                            "nombre": str(n_nombre.strip()),
+                            "costo_unitario": float(n_costo),
+                            "precio_venta": float(n_precio),
+                            "stock": int(n_stock)
+                        }).eq("id", int(prod_sel['id'])).execute()
+                        st.success("✅ Producto actualizado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al actualizar: {e}")
 
                 if elim:
-                    supabase.table("productos").delete().eq("id", prod_sel['id']).execute()
-                    st.warning("🗑️ Producto eliminado.")
-                    st.rerun()
+                    try:
+                        supabase.table("productos").delete().eq("id", int(prod_sel['id'])).execute()
+                        st.warning("🗑️ Producto eliminado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al eliminar: {e}")
 
 # ---------------------------------------------------------
 # CALENDARIO ANUAL DE VENTAS
