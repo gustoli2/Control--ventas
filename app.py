@@ -29,7 +29,7 @@ if 'subseccion_inventario' not in st.session_state:
 if 'carrito_ventas' not in st.session_state:
     st.session_state['carrito_ventas'] = []
 
-# --- FUNCIÓN PARA OBTENER LA CONEXIÓN A LA BASE DE DATOS (SUPABASE / POSTGRESQL O SQLITE FALLBACK) ---
+# --- FUNCIÓN PARA OBTENER LA CONEXIÓN A LA BASE DE DATOS ---
 @st.cache_resource
 def obtener_engine():
     supabase_url = None
@@ -39,9 +39,12 @@ def obtener_engine():
         supabase_url = st.secrets["DATABASE_URL"]
     
     if supabase_url:
-        # Formatear URI para SQLAlchemy si empieza con postgres://
+        # Asegurar el uso explícito del driver psycopg2
         if supabase_url.startswith("postgres://"):
-            supabase_url = supabase_url.replace("postgres://", "postgresql://", 1)
+            supabase_url = supabase_url.replace("postgres://", "postgresql+psycopg2://", 1)
+        elif supabase_url.startswith("postgresql://") and not supabase_url.startswith("postgresql+psycopg2://"):
+            supabase_url = supabase_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+            
         return create_engine(supabase_url, pool_pre_ping=True)
     else:
         # Fallback local SQLite
