@@ -618,6 +618,7 @@ elif menu == "📦 Productos e Inventario":
             st.info("No hay productos registrados.")
 
     elif sub_inv == "➕ Agregar Nuevo Producto":
+        st.markdown('<div class="sub-header-yellow">➕ Agregar Nuevo Producto</div>', unsafe_allow_html=True)
         with st.form("form_producto"):
             nombre = st.text_input("Nombre del Producto")
             col1, col2, col3 = st.columns(3)
@@ -627,9 +628,20 @@ elif menu == "📦 Productos e Inventario":
 
             if st.form_submit_button("Guardar Producto"):
                 if nombre.strip() != "":
-                    supabase.table("productos").insert({"nombre": nombre, "costo_unitario": costo, "precio_venta": precio, "stock": stock}).execute()
-                    st.success(f"✅ Producto '{nombre}' agregado.")
-                    st.rerun()
+                    try:
+                        nuevo_producto = {
+                            "nombre": str(nombre.strip()),
+                            "costo_unitario": float(costo),
+                            "precio_venta": float(precio),
+                            "stock": int(stock)
+                        }
+                        supabase.table("productos").insert(nuevo_producto).execute()
+                        st.success(f"✅ Producto '{nombre}' agregado exitosamente.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al guardar en Supabase: {e}")
+                else:
+                    st.error("El nombre del producto no puede estar vacío.")
 
     elif sub_inv == "✏️ Editar / Eliminar":
         res_p = supabase.table("productos").select("*").order("nombre").execute()
