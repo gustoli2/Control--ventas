@@ -558,7 +558,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                             st.error(f"❌ Error al eliminar: {e}")
 
     elif submenu == "📋 Cuentas por Cobrar":
-        res_v = supabase.table("ventas").select("id, cliente_id, saldo_pendiente, clientes(id, nombre, telefono)").eq("estado_pago", "Pendiente").gt("saldo_pendiente", 0).execute()
+        res_v = supabase.table("ventas").select("id, cliente_id, saldo_pendiente, cantidad, precio_unitario, fecha, clientes(id, nombre, telefono), productos(nombre)").eq("estado_pago", "Pendiente").gt("saldo_pendiente", 0).order("fecha", desc=True).execute()
         df_deudas = pd.DataFrame(res_v.data)
 
         if df_deudas.empty:
@@ -566,6 +566,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
         else:
             df_deudas['Cliente'] = df_deudas['clientes'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Cliente')
             df_deudas['Teléfono'] = df_deudas['clientes'].apply(lambda x: x['telefono'] if isinstance(x, dict) else 'S/N')
+            df_deudas['Producto'] = df_deudas['productos'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Producto')
             
             df_deudas_resumen = df_deudas.groupby(['cliente_id', 'Cliente', 'Teléfono'])['saldo_pendiente'].sum().reset_index()
             df_deudas_resumen.rename(columns={'saldo_pendiente': 'Saldo Pendiente ($)'}, inplace=True)
@@ -641,6 +642,43 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
                 st.success(f"🎉 Abono de ${monto_abono:,.2f} registrado exitosamente.")
                 st.rerun()
+
+            st.divider()
+            st.markdown('<div class="sub-header-yellow">📋 Registro General de Clientes Deudores (Detalle por Compra)</div>', unsafe_allow_html=True)
+            
+            # Formatear tabla completa para presentación general
+            df_tabla_deudores = df_deudas[['Cliente', 'Teléfono', 'Producto', 'cantidad', 'precio_unitario', 'saldo_pendiente', 'fecha']].copy()
+            df_tabla_deudores['Pendiente (Bs.)'] = df_tabla_deudores['saldo_pendiente'] * tasa_oficial
+            
+            df_tabla_deudores.rename(columns={
+                'cantidad': 'Cantidad',
+                'precio_unitario': 'Precio Unit. ($)',
+                'saldo_pendiente': 'Saldo Pendiente ($)',
+                'fecha': 'Fecha de Compra'
+            }, inplace=True)
+
+            st.dataframe(df_tabla_deudores[['Cliente', 'Teléfono', 'Producto', 'Cantidad', 'Precio Unit. ($)', 'Saldo Pendiente ($)', 'Pendiente (Bs.)', 'Fecha de Compra']], use_container_width=True)
+
+            with st.expander("🔍 Ver detalle desplegable agrupado por cada cliente"):
+                for _, row_cli in df_deudas_resumen.iterrows():
+                    c_id = int(row_cli['cliente_id'])
+                    c_nom = row_cli['Cliente']
+                    c_tel = row_cli['Teléfono']
+                    c_monto = row_cli['Saldo Pendiente ($)']
+                    c_monto_bs = c_monto * tasa_oficial
+                    
+                    st.write(f"### 👤 {c_nom} (Pendiente: ${c_monto:,.2f} / Bs. {c_monto_bs:,.2f}) - Tel: {c_tel}")
+                    
+                    df_sub = df_deudas[df_deudas['cliente_id'] == c_id][['Producto', 'cantidad', 'precio_unitario', 'saldo_pendiente', 'fecha']].copy()
+                    df_sub['Saldo Pendiente (Bs.)'] = df_sub['saldo_pendiente'] * tasa_oficial
+                    df_sub.rename(columns={
+                        'cantidad': 'Cantidad',
+                        'precio_unitario': 'Precio Unit. ($)',
+                        'saldo_pendiente': 'Saldo Pendiente ($)',
+                        'fecha': 'Fecha de Compra'
+                    }, inplace=True)
+                    
+                    st.dataframe(df_sub, use_container_width=True)
 
 # ---------------------------------------------------------
 # PRODUCTOS E INVENTARIO
