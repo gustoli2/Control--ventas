@@ -558,7 +558,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                             st.error(f"❌ Error al eliminar: {e}")
 
     elif submenu == "📋 Cuentas por Cobrar":
-        res_v = supabase.table("ventas").select("id, cliente_id, saldo_pendiente, cantidad, precio_unitario, fecha, clientes(id, nombre, telefono), productos(nombre)").eq("estado_pago", "Pendiente").gt("saldo_pendiente", 0).order("fecha", desc=True).execute()
+        res_v = supabase.table("ventas").select("id, cliente_id, producto_id, saldo_pendiente, cantidad, precio_unitario, fecha, clientes(id, nombre, telefono), productos(nombre)").eq("estado_pago", "Pendiente").gt("saldo_pendiente", 0).order("fecha", desc=True).execute()
         df_deudas = pd.DataFrame(res_v.data)
 
         if df_deudas.empty:
@@ -643,10 +643,37 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 st.success(f"🎉 Abono de ${monto_abono:,.2f} registrado exitosamente.")
                 st.rerun()
 
+            # --- OPCIÓN PARA BORRAR REGISTROS DE DEUDA ERRORES ---
+            with st.expander("🗑️ Borrar un Registro de Deuda Específico (En caso de error)"):
+                st.caption("Selecciona una venta a crédito para eliminarla y reponer el stock correspondiente.")
+                dict_deudas_borrar = {
+                    f"ID Venta #{row['id']} - {row['Cliente']} | {row['Producto']} ({row['cantidad']} uds) - Pendiente: ${row['saldo_pendiente']:.2f} ({row['fecha']})": row 
+                    for _, row in df_deudas.iterrows()
+                }
+                
+                venta_a_borrar_str = st.selectbox("Selecciona la deuda a borrar", list(dict_deudas_borrar.keys()))
+                v_del_info = dict_deudas_borrar[venta_a_borrar_str]
+
+                if st.button("🗑️ Eliminar Venta y Restablecer Inventario", type="primary", use_container_width=True):
+                    try:
+                        # 1. Obtener stock actual del producto
+                        res_p_curr = supabase.table("productos").select("stock").eq("id", int(v_del_info['producto_id'])).execute()
+                        if res_p_curr.data:
+                            stock_actual = int(res_p_curr.data[0]['stock'])
+                            # Restituir stock sumando la cantidad cancelada
+                            supabase.table("productos").update({"stock": stock_actual + int(v_del_info['cantidad'])}).eq("id", int(v_del_info['producto_id'])).execute()
+                        
+                        # 2. Eliminar el registro de venta
+                        supabase.table("ventas").delete().eq("id", int(v_del_info['id'])).execute()
+                        
+                        st.warning(f"🗑️ Registro de deuda #{v_del_info['id']} eliminado y stock restituido.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al borrar el registro: {e}")
+
             st.divider()
             st.markdown('<div class="sub-header-yellow">📋 Registro General de Clientes Deudores (Detalle por Compra)</div>', unsafe_allow_html=True)
             
-            # Formatear tabla completa para presentación general
             df_tabla_deudores = df_deudas[['Cliente', 'Teléfono', 'Producto', 'cantidad', 'precio_unitario', 'saldo_pendiente', 'fecha']].copy()
             df_tabla_deudores['Pendiente (Bs.)'] = df_tabla_deudores['saldo_pendiente'] * tasa_oficial
             
