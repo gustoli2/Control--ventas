@@ -582,13 +582,41 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             cliente_info = opciones_deudores[cliente_sel_str]
             cliente_id_sel = int(cliente_info['cliente_id'])
             deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
+            deuda_maxima_bs = deuda_maxima * tasa_oficial
 
             tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
             num_wa = "58" + tel_bruto[1:] if tel_bruto.startswith("0") else tel_bruto
-            texto_msj = f"Hola {cliente_info['Cliente']},\n\nQueremos recordarte que tienes pagos pendientes de ${deuda_maxima:,.2f} con Olinuts."
+
+            m_nombre = cliente_info['Cliente']
+            m_monto_usd = f"${deuda_maxima:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+            m_monto_bs = f"Bs. {deuda_maxima_bs:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+
+            texto_msj = (
+                f"Hola {m_nombre},\n\n"
+                f"Queremos recordarte que tienes pagos pendientes de {m_monto_usd} ({m_monto_bs}) con Olinuts. "
+                f"Nada mejor que llevar tus cuentas al día, por eso no olvides realizar los pagos. "
+                f"Que tengas un feliz día!"
+            )
+
             link_wa = f"https://wa.me/{num_wa}?text={urllib.parse.quote(texto_msj)}"
 
-            st.markdown(f'<a href="{link_wa}" target="_blank">📲 Enviar Recordatorio por WhatsApp a {cliente_info["Cliente"]}</a>', unsafe_allow_html=True)
+            st.markdown(f'''
+                <a href="{link_wa}" target="_blank" style="text-decoration: none;">
+                    <div style="
+                        background-color: #25D366; 
+                        color: white; 
+                        padding: 14px 20px; 
+                        border-radius: 12px; 
+                        text-align: center; 
+                        font-weight: bold; 
+                        font-size: 18px;
+                        margin-top: 10px;
+                        margin-bottom: 20px;
+                        box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);">
+                        📲 Enviar Recordatorio por WhatsApp a {m_nombre}
+                    </div>
+                </a>
+            ''', unsafe_allow_html=True)
 
             col_ab1, col_ab2 = st.columns(2)
             with col_ab1:
