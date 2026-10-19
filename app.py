@@ -559,7 +559,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
             num_wa = "58" + tel_bruto[1:] if tel_bruto.startswith("0") else tel_bruto
-            texto_msj = f"Hola {cliente_info['Cliente']},\n\nQueremos recordarte que tienes pagos pendientes de ${deuda_maxima:,.2f} con Olinuts."
+            texto_msj = f"Hola {cliente_info['Cliente']},\n\nQueremos recordarte que tienes pagos pendientes de ${deuda_maxima:,.2f} con Olinuts.Nada mejor que llevar tus cuentas al dia, por eso no olvides realizar los pagos, Que tengas un feliz día"
             link_wa = f"https://wa.me/{num_wa}?text={urllib.parse.quote(texto_msj)}"
 
             st.markdown(f'<a href="{link_wa}" target="_blank">📲 Enviar Recordatorio por WhatsApp a {cliente_info["Cliente"]}</a>', unsafe_allow_html=True)
