@@ -592,7 +592,6 @@ elif menu == "💰 Transacciones Pagadas":
 
             st.dataframe(df_display, use_container_width=True)
 
-            # Opción para anular pago por error
             with st.expander("🗑️ Anular / Borrar una Transacción Pagada (En caso de error)"):
                 dict_pagos_del = {
                     f"ID #{row['id']} - {row['Cliente']} | {row['Producto']} ({row['cantidad']} uds) - ${row['Monto Total ($)']:.2f} ({row['fecha']})": row 
@@ -797,7 +796,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 st.success(f"🎉 Abono de ${monto_abono:,.2f} registrado exitosamente.")
                 st.rerun()
 
-            # --- OPCIÓN PARA BORRAR REGISTROS DE DEUDA ERRORES ---
             with st.expander("🗑️ Borrar un Registro de Deuda Específico (En caso de error)"):
                 st.caption("Selecciona una venta a crédito para eliminarla y reponer el stock correspondiente.")
                 dict_deudas_borrar = {
@@ -887,7 +885,6 @@ elif menu == "📦 Productos e Inventario":
             df_prods['val_costo_tot'] = df_prods['costo_unitario'] * df_prods['stock']
             costo_total_inv = float(df_prods['val_costo_tot'].sum())
 
-            # Tarjetas Métricas
             col_m1, col_m2 = st.columns(2)
             with col_m1:
                 st.markdown(f"""
@@ -904,7 +901,6 @@ elif menu == "📦 Productos e Inventario":
                     </div>
                 """, unsafe_allow_html=True)
 
-            # Buscador y Filtros
             busq_prod = st.text_input("🔍 Buscar producto...", placeholder="Escribe para buscar...")
             
             f_col1, f_col2, f_col3 = st.columns(3)
@@ -918,7 +914,6 @@ elif menu == "📦 Productos e Inventario":
                 if st.button("✅ Disponibles", use_container_width=True):
                     st.session_state['filtro_inv'] = "Disponibles"
 
-            # Aplicar Filtros
             df_filtered = df_prods.copy()
             if busq_prod.strip() != "":
                 df_filtered = df_filtered[df_filtered['nombre'].str.contains(busq_prod, case=False, na=False)]
@@ -939,7 +934,6 @@ elif menu == "📦 Productos e Inventario":
                     p_precio = float(p_row['precio_venta'])
                     p_precio_bs = p_precio * tasa_oficial
 
-                    # Badge según stock
                     if p_stock == 0:
                         badge_html = '<span class="badge-no-stock">No disponible</span>'
                     elif p_stock <= 3:
@@ -1085,6 +1079,18 @@ elif menu == "📈 Reportes y Métricas":
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_r", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
+    st.markdown('<div class="sub-header-yellow">📅 Filtrar Reporte por Año y Mes</div>', unsafe_allow_html=True)
+    
+    col_rep_an, col_rep_me = st.columns(2)
+    with col_rep_an:
+        anio_rep_sel = st.selectbox("Selecciona el Año", list(range(2024, 2031)), index=2, key="rep_anio")
+    with col_rep_me:
+        meses_nombres_rep = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
+        mes_rep_nombre_sel = st.selectbox("Selecciona el Mes", list(meses_nombres_rep.values()), index=datetime.now().month - 1, key="rep_mes")
+        mes_rep_sel = [k for k, v in meses_nombres_rep.items() if v == mes_rep_nombre_sel][0]
+
+    mes_filtro_str = f"{anio_rep_sel}-{mes_rep_sel:02d}"
+
     res_v = supabase.table("ventas").select("id, cantidad, precio_unitario, ganancia_total, estado_pago, fecha, productos(nombre), clientes(nombre)").order("id", desc=True).execute()
     df_ventas = pd.DataFrame(res_v.data)
 
@@ -1093,13 +1099,30 @@ elif menu == "📈 Reportes y Métricas":
         df_ventas['Cliente'] = df_ventas['clientes'].apply(lambda x: x['nombre'] if isinstance(x, dict) else '')
         df_ventas['Ingreso Total ($)'] = df_ventas['cantidad'] * df_ventas['precio_unitario']
         
-        total_ingresos = float(df_ventas['Ingreso Total ($)'].sum())
-        total_ganancias = float(df_ventas['ganancia_total'].sum())
-        
-        col1, col2 = st.columns(2)
-        col1.metric("Ingresos Totales", f"${total_ingresos:,.2f}", f"Bs. {total_ingresos * tasa_oficial:,.2f}")
-        col2.metric("Ganancia Neta Total", f"${total_ganancias:,.2f}", f"Bs. {total_ganancias * tasa_oficial:,.2f}")
-        st.divider()
-        st.dataframe(df_ventas[['id', 'Producto', 'Cliente', 'cantidad', 'precio_unitario', 'Ingreso Total ($)', 'ganancia_total', 'estado_pago', 'fecha']], use_container_width=True)
+        # Filtrar por el mes y año seleccionados
+        df_ventas_filtrado = df_ventas[df_ventas['fecha'].str.startswith(mes_filtro_str)].copy()
+
+        if df_ventas_filtrado.empty:
+            st.warning(f"⚠️ No hay registros de transacciones para {mes_rep_nombre_sel} {anio_rep_sel}.")
+        else:
+            total_ingresos = float(df_ventas_filtrado['Ingreso Total ($)'].sum())
+            total_ganancias = float(df_ventas_filtrado['ganancia_total'].sum())
+            
+            col1, col2 = st.columns(2)
+            col1.metric(f"Ingresos Totales ({mes_rep_nombre_sel} {anio_rep_sel})", f"${total_ingresos:,.2f}", f"Bs. {total_ingresos * tasa_oficial:,.2f}")
+            col2.metric(f"Ganancia Neta Total ({mes_rep_nombre_sel} {anio_rep_sel})", f"${total_ganancias:,.2f}", f"Bs. {total_ganancias * tasa_oficial:,.2f}")
+            st.divider()
+            
+            df_display_rep = df_ventas_filtrado[['id', 'Producto', 'Cliente', 'cantidad', 'precio_unitario', 'Ingreso Total ($)', 'ganancia_total', 'estado_pago', 'fecha']].copy()
+            df_display_rep.rename(columns={
+                'id': 'ID Venta',
+                'cantidad': 'Cantidad',
+                'precio_unitario': 'Precio Unit ($)',
+                'ganancia_total': 'Ganancia ($)',
+                'estado_pago': 'Estado',
+                'fecha': 'Fecha / Hora'
+            }, inplace=True)
+
+            st.dataframe(df_display_rep, use_container_width=True)
     else:
         st.info("Aún no hay ventas registradas.")
