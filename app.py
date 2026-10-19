@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import streamlit as st
 import pandas as pd
@@ -5,6 +6,7 @@ import requests
 import urllib.parse
 from datetime import datetime, date
 import calendar
+from sqlalchemy import create_engine, text
 
 # Configuración de la página
 st.set_page_config(
@@ -26,6 +28,86 @@ if 'subseccion_inventario' not in st.session_state:
 
 if 'carrito_ventas' not in st.session_state:
     st.session_state['carrito_ventas'] = []
+
+# --- FUNCIÓN PARA OBTENER LA CONEXIÓN A LA BASE DE DATOS (SUPABASE / POSTGRESQL O SQLITE FALLBACK) ---
+@st.cache_resource
+def obtener_engine():
+    supabase_url = None
+    if "SUPABASE_URL" in st.secrets:
+        supabase_url = st.secrets["SUPABASE_URL"]
+    elif "DATABASE_URL" in st.secrets:
+        supabase_url = st.secrets["DATABASE_URL"]
+    
+    if supabase_url:
+        # Formatear URI para SQLAlchemy si empieza con postgres://
+        if supabase_url.startswith("postgres://"):
+            supabase_url = supabase_url.replace("postgres://", "postgresql://", 1)
+        return create_engine(supabase_url, pool_pre_ping=True)
+    else:
+        # Fallback local SQLite
+        return create_engine("sqlite:///control_ventas.db")
+
+engine = obtener_engine()
+
+def ejecutar_consulta_df(query, params=None):
+    with engine.connect() as conn:
+        return pd.read_sql_query(text(query), conn, params=params)
+
+def ejecutar_comando(query, params=None):
+    with engine.begin() as conn:
+        conn.execute(text(query), params if params else {})
+
+def inicializar_db():
+    is_postgres = "postgresql" in str(engine.url)
+    
+    id_pk = "SERIAL PRIMARY KEY" if is_postgres else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    
+    query_prod = f'''
+        CREATE TABLE IF NOT EXISTS productos (
+            id {id_pk},
+            nombre TEXT NOT NULL,
+            costo_unitario REAL NOT NULL,
+            precio_venta REAL NOT NULL,
+            stock INTEGER DEFAULT 0
+        );
+    '''
+    
+    query_cli = f'''
+        CREATE TABLE IF NOT EXISTS clientes (
+            id {id_pk},
+            nombre TEXT NOT NULL,
+            telefono TEXT
+        );
+    '''
+    
+    query_ventas = f'''
+        CREATE TABLE IF NOT EXISTS ventas (
+            id {id_pk},
+            producto_id INTEGER REFERENCES productos(id),
+            cliente_id INTEGER DEFAULT 1 REFERENCES clientes(id),
+            cantidad INTEGER NOT NULL,
+            precio_unitario REAL NOT NULL,
+            costo_unitario REAL NOT NULL,
+            ganancia_total REAL NOT NULL,
+            estado_pago TEXT DEFAULT 'Pagado',
+            saldo_pendiente REAL DEFAULT 0.0,
+            fecha TEXT NOT NULL
+        );
+    '''
+    
+    ejecutar_comando(query_prod)
+    ejecutar_comando(query_cli)
+    ejecutar_comando(query_ventas)
+    
+    # Insertar cliente mostrador por defecto si no existe
+    df_c = ejecutar_consulta_df("SELECT COUNT(*) AS total FROM clientes WHERE id = 1")
+    if df_c['total'].iloc[0] == 0:
+        if is_postgres:
+            ejecutar_comando("INSERT INTO clientes (id, nombre, telefono) VALUES (1, 'Cliente Mostrador / General', 'S/N') ON CONFLICT DO NOTHING;")
+        else:
+            ejecutar_comando("INSERT OR IGNORE INTO clientes (id, nombre, telefono) VALUES (1, 'Cliente Mostrador / General', 'S/N');")
+
+inicializar_db()
 
 # --- FUNCIÓN PARA OBTENER LA TASA BCV EN TIEMPO REAL ---
 @st.cache_data(ttl=3600)
@@ -214,73 +296,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- FUNCIONES DE BASE DE DATOS ---
-def conectar_db():
-    return sqlite3.connect("control_ventas.db")
-
-def inicializar_db():
-    conn = conectar_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS productos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            costo_unitario REAL NOT NULL,
-            precio_venta REAL NOT NULL,
-            stock INTEGER DEFAULT 0
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS clientes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            telefono TEXT
-        )
-    ''')
-    
-    cursor.execute("SELECT COUNT(*) FROM clientes WHERE id = 1")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO clientes (id, nombre, telefono) VALUES (1, 'Cliente Mostrador / General', 'S/N')")
-
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS ventas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            producto_id INTEGER,
-            cliente_id INTEGER DEFAULT 1,
-            cantidad INTEGER NOT NULL,
-            precio_unitario REAL NOT NULL,
-            costo_unitario REAL NOT NULL,
-            ganancia_total REAL NOT NULL,
-            estado_pago TEXT DEFAULT 'Pagado',
-            saldo_pendiente REAL DEFAULT 0.0,
-            fecha TEXT NOT NULL,
-            FOREIGN KEY (producto_id) REFERENCES productos(id),
-            FOREIGN KEY (cliente_id) REFERENCES clientes(id)
-        )
-    ''')
-    
-    cursor.execute("PRAGMA table_info(ventas)")
-    columnas = [col[1] for col in cursor.fetchall()]
-    if 'cliente_id' not in columnas:
-        cursor.execute("ALTER TABLE ventas ADD COLUMN cliente_id INTEGER DEFAULT 1")
-    if 'estado_pago' not in columnas:
-        cursor.execute("ALTER TABLE ventas ADD COLUMN estado_pago TEXT DEFAULT 'Pagado'")
-    if 'saldo_pendiente' not in columnas:
-        cursor.execute("ALTER TABLE ventas ADD COLUMN saldo_pendiente REAL DEFAULT 0.0")
-        cursor.execute("UPDATE ventas SET saldo_pendiente = (cantidad * precio_unitario) WHERE estado_pago = 'Pendiente'")
-
-    conn.commit()
-    conn.close()
-
-inicializar_db()
-
 # Cargar Tasa BCV
 tasa_bcv_auto = obtener_tasa_bcv()
 
 # --- NAVEGACIÓN EN EL MENÚ LATERAL ---
-# Imagen del maní (nut)
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2515/2515183.png", width=90)
 st.sidebar.title("OLINUTS")
 
@@ -320,23 +339,16 @@ if menu == "🏠 Inicio / Dashboard":
     
     fecha_hoy_str = date.today().strftime("%Y-%m-%d")
     
-    conn = conectar_db()
-    df_ventas_hoy = pd.read_sql_query(f'''
-        SELECT (cantidad * precio_unitario) AS ingreso, 
-               (cantidad * costo_unitario) AS costo,
-               ganancia_total
-        FROM ventas 
-        WHERE fecha LIKE '{fecha_hoy_str}%'
-    ''', conn)
+    df_ventas_hoy = ejecutar_consulta_df(
+        "SELECT (cantidad * precio_unitario) AS ingreso, (cantidad * costo_unitario) AS costo, ganancia_total FROM ventas WHERE fecha LIKE :fecha",
+        {"fecha": f"{fecha_hoy_str}%"}
+    )
     
     mes_actual_str = date.today().strftime("%Y-%m")
-    df_ventas_mes = pd.read_sql_query(f'''
-        SELECT v.ganancia_total, p.nombre AS producto, v.cantidad
-        FROM ventas v
-        JOIN productos p ON v.producto_id = p.id
-        WHERE v.fecha LIKE '{mes_actual_str}%'
-    ''', conn)
-    conn.close()
+    df_ventas_mes = ejecutar_consulta_df(
+        "SELECT v.ganancia_total, p.nombre AS producto, v.cantidad FROM ventas v JOIN productos p ON v.producto_id = p.id WHERE v.fecha LIKE :mes",
+        {"mes": f"{mes_actual_str}%"}
+    )
     
     ventas_hoy = df_ventas_hoy['ingreso'].sum() if not df_ventas_hoy.empty else 0.0
     costos_hoy = df_ventas_hoy['costo'].sum() if not df_ventas_hoy.empty else 0.0
@@ -403,11 +415,11 @@ if menu == "🏠 Inicio / Dashboard":
         ganancias_mes_bs = ganancias_mes * tasa_oficial
         st.subheader(f"💵 ${ganancias_mes:,.2f}")
         st.caption(f"Bs. {ganancias_mes_bs:,.2f}")
-        st.success("📈 Registro activo")
+        st.success("📈 Registro activo (Persistente en Nube)")
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# OPCIÓN 1: REGISTRAR VENTA (CARRITO MULTIPRODUCTO CON BÚSQUEDA)
+# OPCIÓN 1: REGISTRAR VENTA
 # ---------------------------------------------------------
 elif menu == "🛒 Registrar Venta":
     col_header, col_home = st.columns([3, 1])
@@ -416,10 +428,8 @@ elif menu == "🛒 Registrar Venta":
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_v", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
     
-    conn = conectar_db()
-    df_prods = pd.read_sql_query("SELECT id, nombre, costo_unitario, precio_venta, stock FROM productos", conn)
-    df_clientes = pd.read_sql_query("SELECT id, nombre, telefono FROM clientes", conn)
-    conn.close()
+    df_prods = ejecutar_consulta_df("SELECT id, nombre, costo_unitario, precio_venta, stock FROM productos ORDER BY nombre ASC")
+    df_clientes = ejecutar_consulta_df("SELECT id, nombre, telefono FROM clientes ORDER BY nombre ASC")
 
     if df_prods.empty:
         st.warning("⚠️ Primero debes agregar productos en la sección 'Productos e Inventario'.")
@@ -450,11 +460,7 @@ elif menu == "🛒 Registrar Venta":
                     nuevo_tel = st.text_input("Teléfono / WhatsApp", key="nv_cli_tel")
                     if st.button("💾 Guardar Cliente", use_container_width=True, type="primary"):
                         if nuevo_nombre.strip() != "":
-                            conn = conectar_db()
-                            cursor = conn.cursor()
-                            cursor.execute("INSERT INTO clientes (nombre, telefono) VALUES (?, ?)", (nuevo_nombre, nuevo_tel if nuevo_tel.strip() else 'Sin teléfono'))
-                            conn.commit()
-                            conn.close()
+                            ejecutar_comando("INSERT INTO clientes (nombre, telefono) VALUES (:nom, :tel)", {"nom": nuevo_nombre, "tel": nuevo_tel if nuevo_tel.strip() else 'Sin teléfono'})
                             st.success(f"✅ Cliente '{nuevo_nombre}' guardado. Por favor selecciónalo en la lista.")
                             st.rerun()
                         else:
@@ -551,24 +557,22 @@ elif menu == "🛒 Registrar Venta":
 
                 with col_b_confirm:
                     if st.button("🎉 Confirmar y Registrar Venta Completa", type="primary", use_container_width=True):
-                        conn = conectar_db()
-                        cursor = conn.cursor()
-                        
                         hora_actual_str = datetime.now().strftime(" %H:%M:%S")
                         fecha_final_str = fecha_venta_elegida.strftime("%Y-%m-%d") + hora_actual_str
 
                         for item in st.session_state['carrito_ventas']:
                             saldo_ini_item = 0.0 if estado_pago_val == "Pagado" else item['subtotal']
                             
-                            cursor.execute('''
+                            ejecutar_comando('''
                                 INSERT INTO ventas (producto_id, cliente_id, cantidad, precio_unitario, costo_unitario, ganancia_total, estado_pago, saldo_pendiente, fecha)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            ''', (item['producto_id'], cliente_data['id'], item['cantidad'], item['precio_unitario'], item['costo_unitario'], item['ganancia'], estado_pago_val, saldo_ini_item, fecha_final_str))
+                                VALUES (:p_id, :c_id, :cant, :prec, :cost, :gan, :est, :saldo, :fec)
+                            ''', {
+                                "p_id": int(item['producto_id']), "c_id": int(cliente_data['id']), "cant": int(item['cantidad']),
+                                "prec": float(item['precio_unitario']), "cost": float(item['costo_unitario']), "gan": float(item['ganancia']),
+                                "est": estado_pago_val, "saldo": float(saldo_ini_item), "fec": fecha_final_str
+                            })
                             
-                            cursor.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (item['cantidad'], item['producto_id']))
-
-                        conn.commit()
-                        conn.close()
+                            ejecutar_comando("UPDATE productos SET stock = stock - :cant WHERE id = :p_id", {"cant": int(item['cantidad']), "p_id": int(item['producto_id'])})
 
                         st.session_state['carrito_ventas'] = []
                         st.balloons()
@@ -629,9 +633,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
     if submenu == "📋 Listado General":
         st.markdown('<div class="sub-header-yellow">📋 Listado General de Clientes</div>', unsafe_allow_html=True)
-        conn = conectar_db()
-        df_cli = pd.read_sql_query("SELECT id AS 'ID', nombre AS 'Nombre', telefono AS 'Teléfono' FROM clientes", conn)
-        conn.close()
+        df_cli = ejecutar_consulta_df("SELECT id AS 'ID', nombre AS 'Nombre', telefono AS 'Teléfono' FROM clientes ORDER BY nombre ASC")
         
         if not df_cli.empty:
             busq_cli_gen = st.text_input("🔍 Buscar Cliente en la lista...", placeholder="Escribe el nombre a buscar...")
@@ -650,19 +652,13 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             if guardar_cliente:
                 if nombre_cliente.strip() != "":
-                    conn = conectar_db()
-                    cursor = conn.cursor()
-                    cursor.execute("INSERT INTO clientes (nombre, telefono) VALUES (?, ?)", (nombre_cliente, telefono_cliente if telefono_cliente.strip() else 'Sin teléfono'))
-                    conn.commit()
-                    conn.close()
+                    ejecutar_comando("INSERT INTO clientes (nombre, telefono) VALUES (:nom, :tel)", {"nom": nombre_cliente, "tel": telefono_cliente if telefono_cliente.strip() else 'Sin teléfono'})
                     st.success(f"✅ Cliente '{nombre_cliente}' agregado correctamente.")
                     st.rerun()
 
     elif submenu == "✏️ Editar / Eliminar":
         st.markdown('<div class="sub-header-yellow">✏️ Editar o Eliminar Cliente Existente</div>', unsafe_allow_html=True)
-        conn = conectar_db()
-        df_cli_edit = pd.read_sql_query("SELECT * FROM clientes", conn)
-        conn.close()
+        df_cli_edit = ejecutar_consulta_df("SELECT * FROM clientes ORDER BY nombre ASC")
 
         if not df_cli_edit.empty:
             busq_cli_ed = st.text_input("🔍 Buscar Cliente por Nombre...", placeholder="Escribe el nombre del cliente que buscas...", key="busq_cli_ed")
@@ -691,12 +687,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                         if n_nombre.strip() == "":
                             st.error("El nombre no puede estar vacío.")
                         else:
-                            conn = conectar_db()
-                            cursor = conn.cursor()
-                            cursor.execute("UPDATE clientes SET nombre=?, telefono=? WHERE id=?", 
-                                           (n_nombre, n_telefono if n_telefono.strip() else 'Sin teléfono', cli_sel['id']))
-                            conn.commit()
-                            conn.close()
+                            ejecutar_comando("UPDATE clientes SET nombre=:nom, telefono=:tel WHERE id=:id", {"nom": n_nombre, "tel": n_telefono if n_telefono.strip() else 'Sin teléfono', "id": int(cli_sel['id'])})
                             st.success("✅ Cliente actualizado exitosamente.")
                             st.rerun()
 
@@ -704,31 +695,25 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                         if cli_sel['id'] == 1:
                             st.error("❌ No se puede eliminar el cliente general/mostrador por defecto.")
                         else:
-                            conn = conectar_db()
-                            cursor = conn.cursor()
-                            cursor.execute("UPDATE ventas SET cliente_id = 1 WHERE cliente_id = ?", (cli_sel['id'],))
-                            cursor.execute("DELETE FROM clientes WHERE id=?", (cli_sel['id'],))
-                            conn.commit()
-                            conn.close()
+                            ejecutar_comando("UPDATE ventas SET cliente_id = 1 WHERE cliente_id = :id", {"id": int(cli_sel['id'])})
+                            ejecutar_comando("DELETE FROM clientes WHERE id=:id", {"id": int(cli_sel['id'])})
                             st.warning("🗑️ Cliente eliminado correctamente.")
                             st.rerun()
         else:
             st.info("No hay clientes disponibles para editar.")
 
     elif submenu == "📋 Cuentas por Cobrar":
-        conn = conectar_db()
-        df_deudas_resumen = pd.read_sql_query('''
+        df_deudas_resumen = ejecutar_consulta_df('''
             SELECT c.id AS cliente_id,
-                   c.nombre AS 'Cliente',
-                   c.telefono AS 'Teléfono',
-                   SUM(v.saldo_pendiente) AS 'Saldo Pendiente ($)',
-                   COUNT(v.id) AS 'Cant. Compras'
+                   c.nombre AS "Cliente",
+                   c.telefono AS "Teléfono",
+                   SUM(v.saldo_pendiente) AS "Saldo Pendiente ($)",
+                   COUNT(v.id) AS "Cant. Compras"
             FROM ventas v
             JOIN clientes c ON v.cliente_id = c.id
             WHERE v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
             GROUP BY c.id, c.nombre, c.telefono
-        ''', conn)
-        conn.close()
+        ''')
 
         if df_deudas_resumen.empty:
             st.success("🎉 ¡No hay cuentas por cobrar pendientes en este momento!")
@@ -754,7 +739,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 opciones_clientes_deuda = {f"{row['Cliente']} (Monto Pendiente: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_filt.iterrows()}
                 cliente_a_liquidar_str = st.selectbox("Selecciona el Cliente", list(opciones_clientes_deuda.keys()))
                 cliente_info = opciones_clientes_deuda[cliente_a_liquidar_str]
-                cliente_id_sel = cliente_info['cliente_id']
+                cliente_id_sel = int(cliente_info['cliente_id'])
                 deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
                 deuda_maxima_bs = deuda_maxima * tasa_oficial
 
@@ -809,46 +794,41 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                     btn_abonar = st.button("💰 Registrar Abono / Pago", type="primary", use_container_width=True)
 
                 if btn_abonar:
-                    conn = conectar_db()
-                    cursor = conn.cursor()
-                    
-                    cursor.execute('''
+                    df_ventas_pend = ejecutar_consulta_df('''
                         SELECT id, saldo_pendiente 
                         FROM ventas 
-                        WHERE cliente_id = ? AND estado_pago = 'Pendiente' AND saldo_pendiente > 0
+                        WHERE cliente_id = :c_id AND estado_pago = 'Pendiente' AND saldo_pendiente > 0
                         ORDER BY fecha ASC
-                    ''', (cliente_id_sel,))
+                    ''', {"c_id": cliente_id_sel})
                     
-                    ventas_pendientes = cursor.fetchall()
                     abono_restante = monto_abono
 
-                    for v_id, s_pendiente in ventas_pendientes:
+                    for _, v_row in df_ventas_pend.iterrows():
+                        v_id = int(v_row['id'])
+                        s_pendiente = float(v_row['saldo_pendiente'])
+                        
                         if abono_restante <= 0:
                             break
                         
                         if abono_restante >= s_pendiente:
                             abono_restante -= s_pendiente
-                            cursor.execute("UPDATE ventas SET saldo_pendiente = 0.0, estado_pago = 'Pagado' WHERE id = ?", (v_id,))
+                            ejecutar_comando("UPDATE ventas SET saldo_pendiente = 0.0, estado_pago = 'Pagado' WHERE id = :id", {"id": v_id})
                         else:
                             nuevo_saldo = s_pendiente - abono_restante
-                            cursor.execute("UPDATE ventas SET saldo_pendiente = ? WHERE id = ?", (nuevo_saldo, v_id))
+                            ejecutar_comando("UPDATE ventas SET saldo_pendiente = :saldo WHERE id = :id", {"saldo": nuevo_saldo, "id": v_id})
                             abono_restante = 0.0
 
-                    conn.commit()
-                    conn.close()
                     st.balloons()
                     st.success(f"🎉 ¡Abono de ${monto_abono:,.2f} registrado exitosamente para {cliente_info['Cliente']}!")
                     st.rerun()
 
                 with st.expander("⚠️ ¿Registraste una deuda por error? Eliminar un registro de deuda"):
-                    conn = conectar_db()
-                    df_ventas_del = pd.read_sql_query('''
+                    df_ventas_del = ejecutar_consulta_df('''
                         SELECT v.id, p.nombre AS producto, v.cantidad, v.saldo_pendiente, v.fecha, p.id AS producto_id
                         FROM ventas v
                         JOIN productos p ON v.producto_id = p.id
-                        WHERE v.cliente_id = ? AND v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
-                    ''', conn, params=(cliente_id_sel,))
-                    conn.close()
+                        WHERE v.cliente_id = :c_id AND v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
+                    ''', {"c_id": cliente_id_sel})
 
                     if not df_ventas_del.empty:
                         dict_del = {f"ID Venta #{row['id']} - {row['producto']} ({row['cantidad']} uds) - Pendiente: ${row['saldo_pendiente']:.2f} ({row['fecha']})": row for _, row in df_ventas_del.iterrows()}
@@ -856,12 +836,8 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                         venta_del_info = dict_del[venta_del_sel_str]
 
                         if st.button("🗑️ Eliminar Registro de Deuda", type="primary", use_container_width=True):
-                            conn = conectar_db()
-                            cursor = conn.cursor()
-                            cursor.execute("UPDATE productos SET stock = stock + ? WHERE id = ?", (venta_del_info['cantidad'], venta_del_info['producto_id']))
-                            cursor.execute("DELETE FROM ventas WHERE id = ?", (venta_del_info['id'],))
-                            conn.commit()
-                            conn.close()
+                            ejecutar_comando("UPDATE productos SET stock = stock + :cant WHERE id = :p_id", {"cant": int(venta_del_info['cantidad']), "p_id": int(venta_del_info['producto_id'])})
+                            ejecutar_comando("DELETE FROM ventas WHERE id = :v_id", {"v_id": int(venta_del_info['id'])})
                             st.warning(f"🗑️ Registro de venta #{venta_del_info['id']} eliminado y stock restituido.")
                             st.rerun()
 
@@ -869,9 +845,8 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             st.markdown('<div class="sub-header-yellow">📋 Listado de Cuentas por Cobrar (Toca un cliente para ver el detalle)</div>', unsafe_allow_html=True)
             
-            conn = conectar_db()
             for _, row_cli in df_deudas_resumen.iterrows():
-                cli_id = row_cli['cliente_id']
+                cli_id = int(row_cli['cliente_id'])
                 cli_nombre = row_cli['Cliente']
                 cli_tel = row_cli['Teléfono']
                 cli_deuda_usd = row_cli['Saldo Pendiente ($)']
@@ -880,24 +855,23 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 titulo_expander = f"👤 {cli_nombre} | Deuda: ${cli_deuda_usd:,.2f} (~ Bs. {cli_deuda_bs:,.2f}) | 📞 {cli_tel}"
                 
                 with st.expander(titulo_expander):
-                    df_detalles_compras = pd.read_sql_query('''
-                        SELECT p.nombre AS 'Producto',
-                               v.cantidad AS 'Cantidad',
-                               v.precio_unitario AS 'Precio Unit ($)',
-                               v.saldo_pendiente AS 'Pendiente ($)',
-                               v.fecha AS 'Fecha de Compra'
+                    df_detalles_compras = ejecutar_consulta_df('''
+                        SELECT p.nombre AS "Producto",
+                               v.cantidad AS "Cantidad",
+                               v.precio_unitario AS "Precio Unit ($)",
+                               v.saldo_pendiente AS "Pendiente ($)",
+                               v.fecha AS "Fecha de Compra"
                         FROM ventas v
                         JOIN productos p ON v.producto_id = p.id
-                        WHERE v.cliente_id = ? AND v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
+                        WHERE v.cliente_id = :c_id AND v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
                         ORDER BY v.fecha DESC
-                    ''', conn, params=(cli_id,))
+                    ''', {"c_id": cli_id})
                     
                     if not df_detalles_compras.empty:
                         df_detalles_compras['Pendiente (Bs.)'] = df_detalles_compras['Pendiente ($)'] * tasa_oficial
                         st.dataframe(df_detalles_compras, use_container_width=True)
                     else:
                         st.info("Sin detalles disponibles.")
-            conn.close()
 
 # ---------------------------------------------------------
 # OPCIÓN 3: PRODUCTOS E INVENTARIO
@@ -946,9 +920,7 @@ elif menu == "📦 Productos e Inventario":
 
     if sub_inv == "📋 Listado de Productos":
         st.markdown('<div class="sub-header-yellow">📋 Listado de Productos</div>', unsafe_allow_html=True)
-        conn = conectar_db()
-        df_prods = pd.read_sql_query("SELECT id AS ID, nombre AS Producto, costo_unitario AS 'Costo ($)', precio_venta AS 'Precio ($)', stock AS Stock FROM productos", conn)
-        conn.close()
+        df_prods = ejecutar_consulta_df("SELECT id AS \"ID\", nombre AS \"Producto\", costo_unitario AS \"Costo ($)\", precio_venta AS \"Precio ($)\", stock AS \"Stock\" FROM productos ORDER BY nombre ASC")
         
         if not df_prods.empty:
             busq_prod_gen = st.text_input("🔍 Buscar Producto...", placeholder="Escribe para buscar un producto...")
@@ -970,19 +942,13 @@ elif menu == "📦 Productos e Inventario":
 
             if st.form_submit_button("Guardar Producto"):
                 if nombre.strip() != "":
-                    conn = conectar_db()
-                    cursor = conn.cursor()
-                    cursor.execute("INSERT INTO productos (nombre, costo_unitario, precio_venta, stock) VALUES (?, ?, ?, ?)", (nombre, costo, precio, stock))
-                    conn.commit()
-                    conn.close()
+                    ejecutar_comando("INSERT INTO productos (nombre, costo_unitario, precio_venta, stock) VALUES (:nom, :cost, :prec, :stk)", {"nom": nombre, "cost": costo, "prec": precio, "stk": stock})
                     st.success(f"✅ Producto '{nombre}' agregado.")
                     st.rerun()
 
     elif sub_inv == "✏️ Editar / Eliminar":
         st.markdown('<div class="sub-header-yellow">✏️ Editar o Eliminar Producto Existente</div>', unsafe_allow_html=True)
-        conn = conectar_db()
-        df_prods_edit = pd.read_sql_query("SELECT * FROM productos", conn)
-        conn.close()
+        df_prods_edit = ejecutar_consulta_df("SELECT * FROM productos ORDER BY nombre ASC")
 
         if not df_prods_edit.empty:
             busq_prod_ed = st.text_input("🔍 Buscar Producto por Nombre...", placeholder="Escribe para buscar el producto...", key="busq_prod_ed")
@@ -1011,20 +977,12 @@ elif menu == "📦 Productos e Inventario":
                     with col_b2: elim = st.form_submit_button("🗑️ Eliminar Producto")
 
                     if act:
-                        conn = conectar_db()
-                        cursor = conn.cursor()
-                        cursor.execute("UPDATE productos SET nombre=?, costo_unitario=?, precio_venta=?, stock=? WHERE id=?", (n_nombre, n_costo, n_precio, n_stock, prod_sel['id']))
-                        conn.commit()
-                        conn.close()
+                        ejecutar_comando("UPDATE productos SET nombre=:nom, costo_unitario=:cost, precio_venta=:prec, stock=:stk WHERE id=:id", {"nom": n_nombre, "cost": n_costo, "prec": n_precio, "stk": n_stock, "id": int(prod_sel['id'])})
                         st.success("✅ Producto actualizado.")
                         st.rerun()
 
                     if elim:
-                        conn = conectar_db()
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM productos WHERE id=?", (prod_sel['id'],))
-                        conn.commit()
-                        conn.close()
+                        ejecutar_comando("DELETE FROM productos WHERE id=:id", {"id": int(prod_sel['id'])})
                         st.warning("🗑️ Producto eliminado.")
                         st.rerun()
         else:
@@ -1055,15 +1013,13 @@ elif menu == "📅 Calendario Anual de Ventas":
     st.markdown(f'<div class="sub-header-yellow">📊 Resumen diario de {mes_sel_nombre} {anio_sel}</div>', unsafe_allow_html=True)
 
     mes_str = f"{anio_sel}-{mes_sel:02d}"
-    conn = conectar_db()
-    df_ventas_mes = pd.read_sql_query(f'''
+    df_ventas_mes = ejecutar_consulta_df('''
         SELECT v.fecha, (v.cantidad * v.precio_unitario) AS ingreso, v.cantidad, p.nombre AS producto, c.nombre AS cliente
         FROM ventas v
         JOIN productos p ON v.producto_id = p.id
         LEFT JOIN clientes c ON v.cliente_id = c.id
-        WHERE v.fecha LIKE '{mes_str}%'
-    ''', conn)
-    conn.close()
+        WHERE v.fecha LIKE :mes
+    ''', {"mes": f"{mes_str}%"})
 
     ventas_por_dia = {}
     if not df_ventas_mes.empty:
@@ -1111,19 +1067,17 @@ elif menu == "📅 Calendario Anual de Ventas":
 
     fecha_busqueda = f"{anio_sel}-{mes_sel:02d}-{dia_elegido:02d}"
     
-    conn = conectar_db()
-    df_detalle_dia = pd.read_sql_query(f'''
-        SELECT v.id AS 'ID', p.nombre AS 'Producto', c.nombre AS 'Cliente',
-               v.cantidad AS 'Cant', v.precio_unitario AS 'Precio ($)', 
-               (v.cantidad * v.precio_unitario) AS 'Total ($)',
-               v.fecha AS 'Fecha y Hora'
+    df_detalle_dia = ejecutar_consulta_df('''
+        SELECT v.id AS "ID", p.nombre AS "Producto", c.nombre AS "Cliente",
+               v.cantidad AS "Cant", v.precio_unitario AS "Precio ($)", 
+               (v.cantidad * v.precio_unitario) AS "Total ($)",
+               v.fecha AS "Fecha y Hora"
         FROM ventas v
         JOIN productos p ON v.producto_id = p.id
         LEFT JOIN clientes c ON v.cliente_id = c.id
-        WHERE v.fecha LIKE '{fecha_busqueda}%'
+        WHERE v.fecha LIKE :fec
         ORDER BY v.fecha DESC
-    ''', conn)
-    conn.close()
+    ''', {"fec": f"{fecha_busqueda}%"})
 
     if not df_detalle_dia.empty:
         total_dia_usd = df_detalle_dia['Total ($)'].sum()
@@ -1148,19 +1102,17 @@ elif menu == "📈 Reportes y Métricas":
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_r", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
-    conn = conectar_db()
-    df_ventas = pd.read_sql_query('''
-        SELECT v.id AS 'ID Venta', p.nombre AS 'Producto', c.nombre AS 'Cliente',
-               v.cantidad AS 'Cantidad', v.precio_unitario AS 'Precio Unit. ($)', 
-               (v.cantidad * v.precio_unitario) AS 'Ingreso Total ($)',
-               v.saldo_pendiente AS 'Saldo Pendiente ($)',
-               v.ganancia_total AS 'Ganancia ($)', v.estado_pago AS 'Estado de Pago', v.fecha AS 'Fecha'
+    df_ventas = ejecutar_consulta_df('''
+        SELECT v.id AS "ID Venta", p.nombre AS "Producto", c.nombre AS "Cliente",
+               v.cantidad AS "Cantidad", v.precio_unitario AS "Precio Unit. ($)", 
+               (v.cantidad * v.precio_unitario) AS "Ingreso Total ($)",
+               v.saldo_pendiente AS "Saldo Pendiente ($)",
+               v.ganancia_total AS "Ganancia ($)", v.estado_pago AS "Estado de Pago", v.fecha AS "Fecha"
         FROM ventas v
         JOIN productos p ON v.producto_id = p.id
         LEFT JOIN clientes c ON v.cliente_id = c.id
         ORDER BY v.id DESC
-    ''', conn)
-    conn.close()
+    ''')
 
     if not df_ventas.empty:
         total_ingresos = df_ventas['Ingreso Total ($)'].sum()
