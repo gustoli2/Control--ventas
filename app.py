@@ -202,6 +202,12 @@ st.markdown("""
         justify-content: center;
         font-size: 38px;
         flex-shrink: 0;
+        overflow: hidden;
+    }
+    .product-icon-box img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
     .product-info {
         flex-grow: 1;
@@ -877,7 +883,7 @@ elif menu == "📦 Productos e Inventario":
     sub_inv = st.session_state['subseccion_inventario']
 
     if sub_inv == "📋 Listado de Productos":
-        res_p = supabase.table("productos").select("id, nombre, costo_unitario, precio_venta, stock").order("nombre").execute()
+        res_p = supabase.table("productos").select("*").order("nombre").execute()
         df_prods = pd.DataFrame(res_p.data)
         
         if not df_prods.empty:
@@ -933,6 +939,7 @@ elif menu == "📦 Productos e Inventario":
                     p_stock = int(p_row['stock'])
                     p_precio = float(p_row['precio_venta'])
                     p_precio_bs = p_precio * tasa_oficial
+                    p_img_url = p_row.get('imagen_url', '')
 
                     if p_stock == 0:
                         badge_html = '<span class="badge-no-stock">No disponible</span>'
@@ -941,9 +948,14 @@ elif menu == "📦 Productos e Inventario":
                     else:
                         badge_html = f'<span class="badge-in-stock">Disponible: {p_stock} uds</span>'
 
+                    if p_img_url and str(p_img_url).strip() != "":
+                        icon_html = f'<img src="{p_img_url}" alt="{p_name}">'
+                    else:
+                        icon_html = '🥜'
+
                     st.markdown(f"""
                         <div class="product-card">
-                            <div class="product-icon-box">🥜</div>
+                            <div class="product-icon-box">{icon_html}</div>
                             <div class="product-info">
                                 <div class="product-title">{p_name}</div>
                                 {badge_html}<br>
@@ -960,6 +972,7 @@ elif menu == "📦 Productos e Inventario":
         st.markdown('<div class="sub-header-yellow">➕ Agregar Nuevo Producto</div>', unsafe_allow_html=True)
         with st.form("form_producto"):
             nombre = st.text_input("Nombre del Producto")
+            imagen_url = st.text_input("URL de la Imagen/Fotografía (Opcional)", placeholder="https://ejemplo.com/imagen.jpg")
             col1, col2, col3 = st.columns(3)
             with col1: costo = st.number_input("Costo Unitario ($)", min_value=0.0, format="%.2f")
             with col2: precio = st.number_input("Precio de Venta ($)", min_value=0.0, format="%.2f")
@@ -972,7 +985,8 @@ elif menu == "📦 Productos e Inventario":
                             "nombre": str(nombre.strip()),
                             "costo_unitario": float(costo),
                             "precio_venta": float(precio),
-                            "stock": int(stock)
+                            "stock": int(stock),
+                            "imagen_url": str(imagen_url.strip()) if imagen_url else ""
                         }
                         supabase.table("productos").insert(nuevo_producto).execute()
                         st.success(f"✅ Producto '{nombre}' agregado exitosamente.")
@@ -993,6 +1007,7 @@ elif menu == "📦 Productos e Inventario":
 
             with st.form("form_editar"):
                 n_nombre = st.text_input("Nombre", value=prod_sel['nombre'])
+                n_imagen_url = st.text_input("URL de la Imagen/Fotografía", value=prod_sel.get('imagen_url', ''))
                 c1, c2, c3 = st.columns(3)
                 with c1: n_costo = st.number_input("Costo ($)", min_value=0.0, value=float(prod_sel['costo_unitario']), format="%.2f")
                 with c2: n_precio = st.number_input("Precio ($)", min_value=0.0, value=float(prod_sel['precio_venta']), format="%.2f")
@@ -1008,7 +1023,8 @@ elif menu == "📦 Productos e Inventario":
                             "nombre": str(n_nombre.strip()),
                             "costo_unitario": float(n_costo),
                             "precio_venta": float(n_precio),
-                            "stock": int(n_stock)
+                            "stock": int(n_stock),
+                            "imagen_url": str(n_imagen_url.strip())
                         }).eq("id", int(prod_sel['id'])).execute()
                         st.success("✅ Producto actualizado.")
                         st.rerun()
@@ -1099,7 +1115,6 @@ elif menu == "📈 Reportes y Métricas":
         df_ventas['Cliente'] = df_ventas['clientes'].apply(lambda x: x['nombre'] if isinstance(x, dict) else '')
         df_ventas['Ingreso Total ($)'] = df_ventas['cantidad'] * df_ventas['precio_unitario']
         
-        # Filtrar por el mes y año seleccionados
         df_ventas_filtrado = df_ventas[df_ventas['fecha'].str.startswith(mes_filtro_str)].copy()
 
         if df_ventas_filtrado.empty:
