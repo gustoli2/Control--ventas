@@ -1,12 +1,11 @@
 import os
-import sqlite3
 import streamlit as st
 import pandas as pd
 import requests
 import urllib.parse
 from datetime import datetime, date
 import calendar
-from sqlalchemy import create_engine, text
+from supabase import create_client, Client
 
 # Configuración de la página
 st.set_page_config(
@@ -16,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Inicializar claves de estado de navegación y carrito si no existen
+# Inicializar claves de estado de navegación y carrito
 if 'menu_radio' not in st.session_state:
     st.session_state['menu_radio'] = "🏠 Inicio / Dashboard"
 
@@ -29,90 +28,30 @@ if 'subseccion_inventario' not in st.session_state:
 if 'carrito_ventas' not in st.session_state:
     st.session_state['carrito_ventas'] = []
 
-# --- FUNCIÓN PARA OBTENER LA CONEXIÓN A LA BASE DE DATOS ---
+# --- CONEXIÓN A SUPABASE VÍA API REST HTTP ---
 @st.cache_resource
-def obtener_engine():
-    supabase_url = None
-    if "SUPABASE_URL" in st.secrets:
-        supabase_url = st.secrets["SUPABASE_URL"]
-    elif "DATABASE_URL" in st.secrets:
-        supabase_url = st.secrets["DATABASE_URL"]
-    
-    if supabase_url:
-        # Asegurar el uso explícito del driver psycopg2
-        if supabase_url.startswith("postgres://"):
-            supabase_url = supabase_url.replace("postgres://", "postgresql+psycopg2://", 1)
-        elif supabase_url.startswith("postgresql://") and not supabase_url.startswith("postgresql+psycopg2://"):
-            supabase_url = supabase_url.replace("postgresql://", "postgresql+psycopg2://", 1)
-            
-        return create_engine(supabase_url, pool_pre_ping=True)
-    else:
-        # Fallback local SQLite
-        return create_engine("sqlite:///control_ventas.db")
+def init_supabase() -> Client:
+    url = st.secrets.get("SUPABASE_URL", "")
+    key = st.secrets.get("SUPABASE_KEY", "")
+    if not url or not key:
+        st.error("⚠️ Faltan SUPABASE_URL y SUPABASE_KEY en los Secrets de Streamlit.")
+        st.stop()
+    return create_client(url, key)
 
-engine = obtener_engine()
-
-def ejecutar_consulta_df(query, params=None):
-    with engine.connect() as conn:
-        return pd.read_sql_query(text(query), conn, params=params)
-
-def ejecutar_comando(query, params=None):
-    with engine.begin() as conn:
-        conn.execute(text(query), params if params else {})
+supabase = init_supabase()
 
 def inicializar_db():
-    is_postgres = "postgresql" in str(engine.url)
-    
-    id_pk = "SERIAL PRIMARY KEY" if is_postgres else "INTEGER PRIMARY KEY AUTOINCREMENT"
-    
-    query_prod = f'''
-        CREATE TABLE IF NOT EXISTS productos (
-            id {id_pk},
-            nombre TEXT NOT NULL,
-            costo_unitario REAL NOT NULL,
-            precio_venta REAL NOT NULL,
-            stock INTEGER DEFAULT 0
-        );
-    '''
-    
-    query_cli = f'''
-        CREATE TABLE IF NOT EXISTS clientes (
-            id {id_pk},
-            nombre TEXT NOT NULL,
-            telefono TEXT
-        );
-    '''
-    
-    query_ventas = f'''
-        CREATE TABLE IF NOT EXISTS ventas (
-            id {id_pk},
-            producto_id INTEGER REFERENCES productos(id),
-            cliente_id INTEGER DEFAULT 1 REFERENCES clientes(id),
-            cantidad INTEGER NOT NULL,
-            precio_unitario REAL NOT NULL,
-            costo_unitario REAL NOT NULL,
-            ganancia_total REAL NOT NULL,
-            estado_pago TEXT DEFAULT 'Pagado',
-            saldo_pendiente REAL DEFAULT 0.0,
-            fecha TEXT NOT NULL
-        );
-    '''
-    
-    ejecutar_comando(query_prod)
-    ejecutar_comando(query_cli)
-    ejecutar_comando(query_ventas)
-    
-    # Insertar cliente mostrador por defecto si no existe
-    df_c = ejecutar_consulta_df("SELECT COUNT(*) AS total FROM clientes WHERE id = 1")
-    if df_c['total'].iloc[0] == 0:
-        if is_postgres:
-            ejecutar_comando("INSERT INTO clientes (id, nombre, telefono) VALUES (1, 'Cliente Mostrador / General', 'S/N') ON CONFLICT DO NOTHING;")
-        else:
-            ejecutar_comando("INSERT OR IGNORE INTO clientes (id, nombre, telefono) VALUES (1, 'Cliente Mostrador / General', 'S/N');")
+    # Asegurar cliente mostrador id = 1
+    res = supabase.table("clientes").select("id").eq("id", 1).execute()
+    if not res.data:
+        try:
+            supabase.table("clientes").insert({"id": 1, "nombre": "Cliente Mostrador / General", "telefono": "S/N"}).execute()
+        except Exception:
+            pass
 
 inicializar_db()
 
-# --- FUNCIÓN PARA OBTENER LA TASA BCV EN TIEMPO REAL ---
+# --- TASA BCV EN TIEMPO REAL ---
 @st.cache_data(ttl=3600)
 def obtener_tasa_bcv():
     try:
@@ -123,7 +62,7 @@ def obtener_tasa_bcv():
             return float(data.get("promedio", 0.0))
     except Exception:
         pass
-    
+
     try:
         url_alt = "https://pydolarvenezuela-api.vercel.app/api/v1/dollar?page=bcv"
         response_alt = requests.get(url_alt, timeout=5)
@@ -145,31 +84,23 @@ def ir_a_subseccion_clientes(nombre_subseccion):
 def ir_a_subseccion_inventario(nombre_subseccion):
     st.session_state['subseccion_inventario'] = nombre_subseccion
 
-# --- ESTILOS CSS PERSONALIZADOS ---
+# --- ESTILOS CSS ---
 st.markdown("""
 <style>
-    /* Fuente global general */
     html, body, [class*="css"], .stMarkdown, p, div, label {
         font-size: 18px !important;
     }
-
     .stApp {
         background-color: #F5F2EB;
     }
-
-    /* Títulos e inputs de Streamlit */
     .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"], .stDateInput input {
         font-size: 18px !important;
     }
-
-    /* Botones más grandes */
     .stButton button {
         font-size: 18px !important;
         font-weight: bold !important;
         padding: 10px 16px !important;
     }
-
-    /* Encabezado Principal */
     .header-container {
         background-color: #FFDE59;
         padding: 22px 20px 12px 20px;
@@ -189,8 +120,6 @@ st.markdown("""
         color: #555555;
         margin-bottom: 10px;
     }
-
-    /* Banners Amarillos de Sección */
     .section-header-yellow {
         background-color: #FFDE59;
         padding: 14px 18px;
@@ -199,9 +128,6 @@ st.markdown("""
         font-size: 22px !important;
         font-weight: bold;
         text-align: center;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
         margin-bottom: 12px;
         box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.05);
     }
@@ -215,10 +141,7 @@ st.markdown("""
         font-weight: bold;
         margin-top: 18px;
         margin-bottom: 18px;
-        box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.04);
     }
-
-    /* Tarjetas e Info */
     .tasa-card {
         background-color: #FFF9C4;
         border: 1px solid #FBC02D;
@@ -237,72 +160,28 @@ st.markdown("""
         box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.05);
         margin-bottom: 20px;
     }
-    .card-title {
-        font-size: 20px !important;
-        font-weight: 600;
-        color: #333333;
-    }
-    .card-amount {
-        font-size: 36px !important;
-        font-weight: bold;
-        color: #111111;
-    }
-    .amount-green {
-        color: #00A86B;
-        font-weight: bold;
-        font-size: 22px !important;
-    }
-    .amount-red {
-        color: #E53935;
-        font-weight: bold;
-        font-size: 22px !important;
-    }
-    .quick-access-title {
-        font-size: 18px !important;
-        font-weight: bold;
-        color: #222222;
-        margin-top: 15px;
-        margin-bottom: 10px;
-    }
+    .card-title { font-size: 20px !important; font-weight: 600; color: #333; }
+    .card-amount { font-size: 36px !important; font-weight: bold; color: #111; }
+    .amount-green { color: #00A86B; font-weight: bold; font-size: 22px !important; }
+    .amount-red { color: #E53935; font-weight: bold; font-size: 22px !important; }
     .stat-card {
         background-color: #FFFFFF;
         border-radius: 14px;
         padding: 16px;
         border: 1px solid #EEEEEE;
-        box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.03);
     }
     .day-box {
-        background-color: #FFFFFF;
-        border: 1px solid #E0E0E0;
-        border-radius: 10px;
-        padding: 10px;
-        text-align: center;
-        min-height: 95px;
-        margin-bottom: 10px;
-        box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.02);
+        background-color: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 10px; padding: 10px; text-align: center; min-height: 95px; margin-bottom: 10px;
     }
     .day-box-active {
-        background-color: #FFFDE7;
-        border: 2px solid #FBC02D;
-        border-radius: 10px;
-        padding: 10px;
-        text-align: center;
-        min-height: 95px;
-        margin-bottom: 10px;
-        box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.05);
-    }
-    
-    /* Tablas de Streamlit */
-    [data-testid="stDataFrame"] {
-        font-size: 17px !important;
+        background-color: #FFFDE7; border: 2px solid #FBC02D; border-radius: 10px; padding: 10px; text-align: center; min-height: 95px; margin-bottom: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Cargar Tasa BCV
 tasa_bcv_auto = obtener_tasa_bcv()
 
-# --- NAVEGACIÓN EN EL MENÚ LATERAL ---
+# --- MENÚ LATERAL ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2515/2515183.png", width=90)
 st.sidebar.title("OLINUTS")
 
@@ -317,14 +196,10 @@ opciones_menu = [
     "📈 Reportes y Métricas"
 ]
 
-menu = st.sidebar.radio(
-    "Ir a:", 
-    opciones_menu, 
-    key='menu_radio'
-)
+menu = st.sidebar.radio("Ir a:", opciones_menu, key='menu_radio')
 
 # ---------------------------------------------------------
-# OPCIÓN: INICIO / DASHBOARD
+# INICIO / DASHBOARD
 # ---------------------------------------------------------
 if menu == "🏠 Inicio / Dashboard":
     st.markdown("""
@@ -334,55 +209,44 @@ if menu == "🏠 Inicio / Dashboard":
         </div>
     """, unsafe_allow_html=True)
     
-    st.markdown(f'''
-        <div class="tasa-card">
-            💵 Tasa Oficial BCV: <b>{tasa_oficial:,.2f} Bs/$</b>
-        </div>
-    ''', unsafe_allow_html=True)
+    st.markdown(f'<div class="tasa-card">💵 Tasa Oficial BCV: <b>{tasa_oficial:,.2f} Bs/$</b></div>', unsafe_allow_html=True)
     
     fecha_hoy_str = date.today().strftime("%Y-%m-%d")
     
-    df_ventas_hoy = ejecutar_consulta_df(
-        "SELECT (cantidad * precio_unitario) AS ingreso, (cantidad * costo_unitario) AS costo, ganancia_total FROM ventas WHERE fecha LIKE :fecha",
-        {"fecha": f"{fecha_hoy_str}%"}
-    )
+    res_v_hoy = supabase.table("ventas").select("cantidad, precio_unitario, costo_unitario, ganancia_total").like("fecha", f"{fecha_hoy_str}%").execute()
+    df_ventas_hoy = pd.DataFrame(res_v_hoy.data)
     
-    mes_actual_str = date.today().strftime("%Y-%m")
-    df_ventas_mes = ejecutar_consulta_df(
-        "SELECT v.ganancia_total, p.nombre AS producto, v.cantidad FROM ventas v JOIN productos p ON v.producto_id = p.id WHERE v.fecha LIKE :mes",
-        {"mes": f"{mes_actual_str}%"}
-    )
-    
-    ventas_hoy = df_ventas_hoy['ingreso'].sum() if not df_ventas_hoy.empty else 0.0
-    costos_hoy = df_ventas_hoy['costo'].sum() if not df_ventas_hoy.empty else 0.0
+    if not df_ventas_hoy.empty:
+        df_ventas_hoy['ingreso'] = df_ventas_hoy['cantidad'] * df_ventas_hoy['precio_unitario']
+        df_ventas_hoy['costo'] = df_ventas_hoy['cantidad'] * df_ventas_hoy['costo_unitario']
+        ventas_hoy = float(df_ventas_hoy['ingreso'].sum())
+        costos_hoy = float(df_ventas_hoy['costo'].sum())
+    else:
+        ventas_hoy = 0.0
+        costos_hoy = 0.0
+        
     balance_hoy = ventas_hoy - costos_hoy
-
-    ventas_hoy_bs = ventas_hoy * tasa_oficial
-    balance_hoy_bs = balance_hoy * tasa_oficial
-    costos_hoy_bs = costos_hoy * tasa_oficial
 
     st.markdown(f"""
         <div class="business-card">
             <div class="card-title">Tu negocio hoy</div>
             <div class="card-amount">${ventas_hoy:,.2f}</div>
-            <div style="font-size: 15px; color: #555; margin-bottom: 15px;">Bs. {ventas_hoy_bs:,.2f}</div>
+            <div style="font-size: 15px; color: #555; margin-bottom: 15px;">Bs. {ventas_hoy * tasa_oficial:,.2f}</div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
                 <div>
                     <span style="font-size: 14px; color: #666;">Balance</span><br>
                     <span class="amount-green">${balance_hoy:,.2f}</span><br>
-                    <span style="font-size: 13px; color: #666;">Bs. {balance_hoy_bs:,.2f}</span>
+                    <span style="font-size: 13px; color: #666;">Bs. {balance_hoy * tasa_oficial:,.2f}</span>
                 </div>
                 <div style="text-align: right;">
                     <span style="font-size: 14px; color: #666;">Costos hoy</span><br>
                     <span class="amount-red">${costos_hoy:,.2f}</span><br>
-                    <span style="font-size: 13px; color: #666;">Bs. {costos_hoy_bs:,.2f}</span>
+                    <span style="font-size: 13px; color: #666;">Bs. {costos_hoy * tasa_oficial:,.2f}</span>
                 </div>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="quick-access-title">Descubre todo lo que puedes hacer</div>', unsafe_allow_html=True)
-    
     st.button("🛒  Nueva Venta", key="btn_nv", use_container_width=True, on_click=ir_a_seccion, args=("🛒 Registrar Venta",))
 
     c1, c2 = st.columns(2)
@@ -395,16 +259,20 @@ if menu == "🏠 Inicio / Dashboard":
 
     st.divider()
 
-    st.markdown('<div class="quick-access-title">📊 Estadísticas del Mes</div>', unsafe_allow_html=True)
+    # Estadísticas Mes
+    mes_actual_str = date.today().strftime("%Y-%m")
+    res_mes = supabase.table("ventas").select("ganancia_total, cantidad, productos(nombre)").like("fecha", f"{mes_actual_str}%").execute()
+    df_ventas_mes = pd.DataFrame(res_mes.data)
     
     col_stat1, col_stat2 = st.columns(2)
-    
     with col_stat1:
         st.markdown('<div class="stat-card">', unsafe_allow_html=True)
         st.caption("Producto estrella del mes")
         if not df_ventas_mes.empty:
-            prod_estrella = df_ventas_mes.groupby('producto')['cantidad'].sum().idxmax()
-            cant_estrella = df_ventas_mes.groupby('producto')['cantidad'].sum().max()
+            df_ventas_mes['prod_nom'] = df_ventas_mes['productos'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Producto')
+            grouped = df_ventas_mes.groupby('prod_nom')['cantidad'].sum()
+            prod_estrella = grouped.idxmax()
+            cant_estrella = grouped.max()
             st.subheader(f"⭐ {prod_estrella}")
             st.write(f"Vendidos: **{cant_estrella} uds.**")
         else:
@@ -414,15 +282,14 @@ if menu == "🏠 Inicio / Dashboard":
     with col_stat2:
         st.markdown('<div class="stat-card">', unsafe_allow_html=True)
         st.caption("Ganancias del mes")
-        ganancias_mes = df_ventas_mes['ganancia_total'].sum() if not df_ventas_mes.empty else 0.0
-        ganancias_mes_bs = ganancias_mes * tasa_oficial
+        ganancias_mes = float(df_ventas_mes['ganancia_total'].sum()) if not df_ventas_mes.empty else 0.0
         st.subheader(f"💵 ${ganancias_mes:,.2f}")
-        st.caption(f"Bs. {ganancias_mes_bs:,.2f}")
-        st.success("📈 Registro activo (Persistente en Nube)")
+        st.caption(f"Bs. {ganancias_mes * tasa_oficial:,.2f}")
+        st.success("📈 Conectado a Supabase Nube")
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# OPCIÓN 1: REGISTRAR VENTA
+# REGISTRAR VENTA
 # ---------------------------------------------------------
 elif menu == "🛒 Registrar Venta":
     col_header, col_home = st.columns([3, 1])
@@ -431,8 +298,11 @@ elif menu == "🛒 Registrar Venta":
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_v", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
     
-    df_prods = ejecutar_consulta_df("SELECT id, nombre, costo_unitario, precio_venta, stock FROM productos ORDER BY nombre ASC")
-    df_clientes = ejecutar_consulta_df("SELECT id, nombre, telefono FROM clientes ORDER BY nombre ASC")
+    res_p = supabase.table("productos").select("*").order("nombre").execute()
+    res_c = supabase.table("clientes").select("*").order("nombre").execute()
+    
+    df_prods = pd.DataFrame(res_p.data)
+    df_clientes = pd.DataFrame(res_c.data)
 
     if df_prods.empty:
         st.warning("⚠️ Primero debes agregar productos en la sección 'Productos e Inventario'.")
@@ -446,14 +316,15 @@ elif menu == "🛒 Registrar Venta":
             st.markdown('<div class="sub-header-yellow">👤 Cliente</div>', unsafe_allow_html=True)
             busqueda_cliente_rv = st.text_input("🔍 Buscar Cliente...", placeholder="Escribe el nombre del cliente", key="busq_cli_rv")
             
-            if busqueda_cliente_rv.strip() != "":
+            if not df_clientes.empty and busqueda_cliente_rv.strip() != "":
                 df_clientes_filt = df_clientes[df_clientes['nombre'].str.contains(busqueda_cliente_rv, case=False, na=False)]
             else:
                 df_clientes_filt = df_clientes
 
             opciones_clientes = {"➕ ¡Agregar Nuevo Cliente!": None}
-            for _, row in df_clientes_filt.iterrows():
-                opciones_clientes[f"{row['nombre']} ({row['telefono']})"] = row
+            if not df_clientes_filt.empty:
+                for _, row in df_clientes_filt.iterrows():
+                    opciones_clientes[f"{row['nombre']} ({row['telefono']})"] = row
                 
             cliente_seleccionado_str = st.selectbox("Selecciona un Cliente", list(opciones_clientes.keys()), key="sb_cli_rv")
             
@@ -463,7 +334,7 @@ elif menu == "🛒 Registrar Venta":
                     nuevo_tel = st.text_input("Teléfono / WhatsApp", key="nv_cli_tel")
                     if st.button("💾 Guardar Cliente", use_container_width=True, type="primary"):
                         if nuevo_nombre.strip() != "":
-                            ejecutar_comando("INSERT INTO clientes (nombre, telefono) VALUES (:nom, :tel)", {"nom": nuevo_nombre, "tel": nuevo_tel if nuevo_tel.strip() else 'Sin teléfono'})
+                            supabase.table("clientes").insert({"nombre": nuevo_nombre, "telefono": nuevo_tel if nuevo_tel.strip() else 'Sin teléfono'}).execute()
                             st.success(f"✅ Cliente '{nuevo_nombre}' guardado. Por favor selecciónalo en la lista.")
                             st.rerun()
                         else:
@@ -478,12 +349,12 @@ elif menu == "🛒 Registrar Venta":
         
         busqueda_prod_rv = st.text_input("🔍 Buscar Producto...", placeholder="Escribe para buscar un producto...", key="busq_prod_rv")
         
-        df_prods_disponibles = df_prods[df_prods['stock'] > 0]
-        if busqueda_prod_rv.strip() != "":
+        df_prods_disponibles = df_prods[df_prods['stock'] > 0] if not df_prods.empty else pd.DataFrame()
+        if not df_prods_disponibles.empty and busqueda_prod_rv.strip() != "":
             df_prods_disponibles = df_prods_disponibles[df_prods_disponibles['nombre'].str.contains(busqueda_prod_rv, case=False, na=False)]
         
         if df_prods_disponibles.empty:
-            st.error("❌ No se encontraron productos con stock disponible que coincidan.")
+            st.error("❌ No se encontraron productos con stock disponible.")
         else:
             opciones_productos = {f"{row['nombre']} (Stock: {row['stock']})": row for _, row in df_prods_disponibles.iterrows()}
             prod_seleccionado_str = st.selectbox("Selecciona un Producto", list(opciones_productos.keys()), key="sb_prod_rv")
@@ -510,17 +381,17 @@ elif menu == "🛒 Registrar Venta":
                             'producto_id': prod_data['id'],
                             'nombre': prod_data['nombre'],
                             'cantidad': cant_a_agregar,
-                            'precio_unitario': prod_data['precio_venta'],
-                            'costo_unitario': prod_data['costo_unitario'],
-                            'subtotal': prod_data['precio_venta'] * cant_a_agregar,
-                            'ganancia': (prod_data['precio_venta'] - prod_data['costo_unitario']) * cant_a_agregar
+                            'precio_unitario': float(prod_data['precio_venta']),
+                            'costo_unitario': float(prod_data['costo_unitario']),
+                            'subtotal': float(prod_data['precio_venta']) * cant_a_agregar,
+                            'ganancia': (float(prod_data['precio_venta']) - float(prod_data['costo_unitario'])) * cant_a_agregar
                         })
                         st.rerun()
 
         st.markdown('<div class="sub-header-yellow">🛒 Resumen del Carrito de Ventas</div>', unsafe_allow_html=True)
         
         if len(st.session_state['carrito_ventas']) == 0:
-            st.info("🛒 Tu carrito está vacío. Selecciona un producto arriba y presiona 'Agregar al Carrito'.")
+            st.info("🛒 Tu carrito está vacío.")
         else:
             for idx, item in enumerate(st.session_state['carrito_ventas']):
                 col_i1, col_i2, col_i3, col_i4, col_i5 = st.columns([3, 1, 2, 2, 1])
@@ -534,23 +405,18 @@ elif menu == "🛒 Registrar Venta":
 
             monto_total_pedido = sum(item['subtotal'] for item in st.session_state['carrito_ventas'])
             ganancia_total_pedido = sum(item['ganancia'] for item in st.session_state['carrito_ventas'])
-            monto_total_pedido_bs = monto_total_pedido * tasa_oficial
 
             st.divider()
 
             col_tot1, col_tot2 = st.columns(2)
-            col_tot1.metric("Total General Pedido", f"${monto_total_pedido:,.2f}", f"Bs. {monto_total_pedido_bs:,.2f}")
+            col_tot1.metric("Total General Pedido", f"${monto_total_pedido:,.2f}", f"Bs. {monto_total_pedido * tasa_oficial:,.2f}")
             col_tot2.metric("Ganancia Estimada Pedido", f"${ganancia_total_pedido:,.2f}")
 
-            tipo_pago = st.radio(
-                "Condición de Pago del Pedido", 
-                ["💵 Pagado de Contado", "📝 Crédito / Cuenta por Cobrar"], 
-                horizontal=True
-            )
+            tipo_pago = st.radio("Condición de Pago del Pedido", ["💵 Pagado de Contado", "📝 Crédito / Cuenta por Cobrar"], horizontal=True)
             estado_pago_val = "Pagado" if "Pagado" in tipo_pago else "Pendiente"
 
             if cliente_data is None:
-                st.warning("⚠️ Selecciona un cliente registrado en la parte superior para finalizar la venta.")
+                st.warning("⚠️ Selecciona un cliente registrado para finalizar la venta.")
             else:
                 col_b_clear, col_b_confirm = st.columns([1, 2])
                 with col_b_clear:
@@ -566,23 +432,29 @@ elif menu == "🛒 Registrar Venta":
                         for item in st.session_state['carrito_ventas']:
                             saldo_ini_item = 0.0 if estado_pago_val == "Pagado" else item['subtotal']
                             
-                            ejecutar_comando('''
-                                INSERT INTO ventas (producto_id, cliente_id, cantidad, precio_unitario, costo_unitario, ganancia_total, estado_pago, saldo_pendiente, fecha)
-                                VALUES (:p_id, :c_id, :cant, :prec, :cost, :gan, :est, :saldo, :fec)
-                            ''', {
-                                "p_id": int(item['producto_id']), "c_id": int(cliente_data['id']), "cant": int(item['cantidad']),
-                                "prec": float(item['precio_unitario']), "cost": float(item['costo_unitario']), "gan": float(item['ganancia']),
-                                "est": estado_pago_val, "saldo": float(saldo_ini_item), "fec": fecha_final_str
-                            })
+                            supabase.table("ventas").insert({
+                                "producto_id": int(item['producto_id']),
+                                "cliente_id": int(cliente_data['id']),
+                                "cantidad": int(item['cantidad']),
+                                "precio_unitario": float(item['precio_unitario']),
+                                "costo_unitario": float(item['costo_unitario']),
+                                "ganancia_total": float(item['ganancia']),
+                                "estado_pago": estado_pago_val,
+                                "saldo_pendiente": float(saldo_ini_item),
+                                "fecha": fecha_final_str
+                            }).execute()
                             
-                            ejecutar_comando("UPDATE productos SET stock = stock - :cant WHERE id = :p_id", {"cant": int(item['cantidad']), "p_id": int(item['producto_id'])})
+                            # Actualizar Stock
+                            stock_actual = int(df_prods[df_prods['id'] == item['producto_id']]['stock'].values[0])
+                            nuevo_stock = stock_actual - int(item['cantidad'])
+                            supabase.table("productos").update({"stock": nuevo_stock}).eq("id", item['producto_id']).execute()
 
                         st.session_state['carrito_ventas'] = []
                         st.balloons()
-                        st.success(f"🎉 ¡Venta multiproducto registrada exitosamente para {cliente_data['nombre']} por un total de ${monto_total_pedido:,.2f}!")
+                        st.success(f"🎉 ¡Venta registrada exitosamente para {cliente_data['nombre']} por un total de ${monto_total_pedido:,.2f}!")
 
 # ---------------------------------------------------------
-# OPCIÓN 2: GESTIÓN DE CLIENTES Y CUENTAS POR COBRAR
+# GESTIÓN DE CLIENTES Y CUENTAS POR COBRAR
 # ---------------------------------------------------------
 elif menu == "👥 Clientes y Cuentas por Cobrar":
     col_header, col_home = st.columns([3, 1])
@@ -591,60 +463,29 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_c", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
-    st.markdown('<div class="quick-access-title">Opciones de Gestión</div>', unsafe_allow_html=True)
-    
     card_col1, card_col2 = st.columns(2)
     with card_col1:
-        st.button(
-            "📋 Listado General", 
-            key="btn_sub_list", 
-            use_container_width=True, 
-            type="primary" if st.session_state['subseccion_clientes'] == "📋 Listado General" else "secondary",
-            on_click=ir_a_subseccion_clientes, 
-            args=("📋 Listado General",)
-        )
-        st.button(
-            "✏️ Editar / Eliminar", 
-            key="btn_sub_edit", 
-            use_container_width=True, 
-            type="primary" if st.session_state['subseccion_clientes'] == "✏️ Editar / Eliminar" else "secondary",
-            on_click=ir_a_subseccion_clientes, 
-            args=("✏️ Editar / Eliminar",)
-        )
-
+        st.button("📋 Listado General", key="btn_sub_list", use_container_width=True, on_click=ir_a_subseccion_clientes, args=("📋 Listado General",))
+        st.button("✏️ Editar / Eliminar", key="btn_sub_edit", use_container_width=True, on_click=ir_a_subseccion_clientes, args=("✏️ Editar / Eliminar",))
     with card_col2:
-        st.button(
-            "➕ Agregar Cliente", 
-            key="btn_sub_add", 
-            use_container_width=True, 
-            type="primary" if st.session_state['subseccion_clientes'] == "➕ Agregar Cliente" else "secondary",
-            on_click=ir_a_subseccion_clientes, 
-            args=("➕ Agregar Cliente",)
-        )
-        st.button(
-            "📋 Cuentas por Cobrar", 
-            key="btn_sub_cxc", 
-            use_container_width=True, 
-            type="primary" if st.session_state['subseccion_clientes'] == "📋 Cuentas por Cobrar" else "secondary",
-            on_click=ir_a_subseccion_clientes, 
-            args=("📋 Cuentas por Cobrar",)
-        )
+        st.button("➕ Agregar Cliente", key="btn_sub_add", use_container_width=True, on_click=ir_a_subseccion_clientes, args=("➕ Agregar Cliente",))
+        st.button("📋 Cuentas por Cobrar", key="btn_sub_cxc", use_container_width=True, on_click=ir_a_subseccion_clientes, args=("📋 Cuentas por Cobrar",))
 
     st.divider()
-
     submenu = st.session_state['subseccion_clientes']
 
     if submenu == "📋 Listado General":
         st.markdown('<div class="sub-header-yellow">📋 Listado General de Clientes</div>', unsafe_allow_html=True)
-        df_cli = ejecutar_consulta_df("SELECT id AS 'ID', nombre AS 'Nombre', telefono AS 'Teléfono' FROM clientes ORDER BY nombre ASC")
+        res_c = supabase.table("clientes").select("id, nombre, telefono").order("nombre").execute()
+        df_cli = pd.DataFrame(res_c.data)
         
         if not df_cli.empty:
-            busq_cli_gen = st.text_input("🔍 Buscar Cliente en la lista...", placeholder="Escribe el nombre a buscar...")
+            busq_cli_gen = st.text_input("🔍 Buscar Cliente...", placeholder="Escribe para buscar...")
             if busq_cli_gen.strip() != "":
-                df_cli = df_cli[df_cli['Nombre'].str.contains(busq_cli_gen, case=False, na=False)]
+                df_cli = df_cli[df_cli['nombre'].str.contains(busq_cli_gen, case=False, na=False)]
             st.dataframe(df_cli, use_container_width=True)
         else:
-            st.info("No hay clientes registrados aún.")
+            st.info("No hay clientes registrados.")
 
     elif submenu == "➕ Agregar Cliente":
         st.markdown('<div class="sub-header-yellow">➕ Agregar Nuevo Cliente</div>', unsafe_allow_html=True)
@@ -655,229 +496,100 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             if guardar_cliente:
                 if nombre_cliente.strip() != "":
-                    ejecutar_comando("INSERT INTO clientes (nombre, telefono) VALUES (:nom, :tel)", {"nom": nombre_cliente, "tel": telefono_cliente if telefono_cliente.strip() else 'Sin teléfono'})
-                    st.success(f"✅ Cliente '{nombre_cliente}' agregado correctamente.")
+                    supabase.table("clientes").insert({"nombre": nombre_cliente, "telefono": telefono_cliente if telefono_cliente.strip() else 'Sin teléfono'}).execute()
+                    st.success(f"✅ Cliente '{nombre_cliente}' agregado.")
                     st.rerun()
 
     elif submenu == "✏️ Editar / Eliminar":
-        st.markdown('<div class="sub-header-yellow">✏️ Editar o Eliminar Cliente Existente</div>', unsafe_allow_html=True)
-        df_cli_edit = ejecutar_consulta_df("SELECT * FROM clientes ORDER BY nombre ASC")
+        st.markdown('<div class="sub-header-yellow">✏️ Editar o Eliminar Cliente</div>', unsafe_allow_html=True)
+        res_c = supabase.table("clientes").select("*").order("nombre").execute()
+        df_cli_edit = pd.DataFrame(res_c.data)
 
         if not df_cli_edit.empty:
-            busq_cli_ed = st.text_input("🔍 Buscar Cliente por Nombre...", placeholder="Escribe el nombre del cliente que buscas...", key="busq_cli_ed")
-            
-            if busq_cli_ed.strip() != "":
-                df_cli_edit_filt = df_cli_edit[df_cli_edit['nombre'].str.contains(busq_cli_ed, case=False, na=False)]
-            else:
-                df_cli_edit_filt = df_cli_edit
+            dict_cli = {f"{row['nombre']} (ID: {row['id']})": row for _, row in df_cli_edit.iterrows()}
+            cli_edit_str = st.selectbox("Selecciona el cliente", list(dict_cli.keys()))
+            cli_sel = dict_cli[cli_edit_str]
 
-            if df_cli_edit_filt.empty:
-                st.warning("No se encontraron clientes que coincidan con la búsqueda.")
-            else:
-                dict_cli = {f"{row['nombre']} (ID: {row['id']})": row for _, row in df_cli_edit_filt.iterrows()}
-                cli_edit_str = st.selectbox("Selecciona el cliente a modificar", list(dict_cli.keys()))
-                cli_sel = dict_cli[cli_edit_str]
+            with st.form("form_editar_cliente_reg"):
+                n_nombre = st.text_input("Nombre", value=cli_sel['nombre'])
+                n_telefono = st.text_input("Teléfono", value=cli_sel['telefono'])
+                col_b1, col_b2 = st.columns(2)
+                with col_b1: act_cli = st.form_submit_button("💾 Actualizar", type="primary")
+                with col_b2: elim_cli = st.form_submit_button("🗑️ Eliminar")
 
-                with st.form("form_editar_cliente_reg"):
-                    n_nombre = st.text_input("Nombre del Cliente", value=cli_sel['nombre'])
-                    n_telefono = st.text_input("Teléfono / WhatsApp", value=cli_sel['telefono'])
-
-                    col_b1, col_b2 = st.columns(2)
-                    with col_b1: act_cli = st.form_submit_button("💾 Actualizar Cambios", type="primary")
-                    with col_b2: elim_cli = st.form_submit_button("🗑️ Eliminar Cliente")
-
-                    if act_cli:
-                        if n_nombre.strip() == "":
-                            st.error("El nombre no puede estar vacío.")
-                        else:
-                            ejecutar_comando("UPDATE clientes SET nombre=:nom, telefono=:tel WHERE id=:id", {"nom": n_nombre, "tel": n_telefono if n_telefono.strip() else 'Sin teléfono', "id": int(cli_sel['id'])})
-                            st.success("✅ Cliente actualizado exitosamente.")
-                            st.rerun()
-
-                    if elim_cli:
-                        if cli_sel['id'] == 1:
-                            st.error("❌ No se puede eliminar el cliente general/mostrador por defecto.")
-                        else:
-                            ejecutar_comando("UPDATE ventas SET cliente_id = 1 WHERE cliente_id = :id", {"id": int(cli_sel['id'])})
-                            ejecutar_comando("DELETE FROM clientes WHERE id=:id", {"id": int(cli_sel['id'])})
-                            st.warning("🗑️ Cliente eliminado correctamente.")
-                            st.rerun()
-        else:
-            st.info("No hay clientes disponibles para editar.")
-
-    elif submenu == "📋 Cuentas por Cobrar":
-        df_deudas_resumen = ejecutar_consulta_df('''
-            SELECT c.id AS cliente_id,
-                   c.nombre AS "Cliente",
-                   c.telefono AS "Teléfono",
-                   SUM(v.saldo_pendiente) AS "Saldo Pendiente ($)",
-                   COUNT(v.id) AS "Cant. Compras"
-            FROM ventas v
-            JOIN clientes c ON v.cliente_id = c.id
-            WHERE v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
-            GROUP BY c.id, c.nombre, c.telefono
-        ''')
-
-        if df_deudas_resumen.empty:
-            st.success("🎉 ¡No hay cuentas por cobrar pendientes en este momento!")
-        else:
-            total_general = df_deudas_resumen['Saldo Pendiente ($)'].sum()
-            total_general_bs = total_general * tasa_oficial
-            col_m1, col_m2 = st.columns(2)
-            col_m1.metric("Total USD por Cobrar", f"${total_general:,.2f}")
-            col_m2.metric("Total Bs. por Cobrar", f"Bs. {total_general_bs:,.2f}")
-            
-            st.markdown('<div class="sub-header-yellow">💵 Registrar Abono o Pago / Notificar por WhatsApp</div>', unsafe_allow_html=True)
-            
-            busq_cxc = st.text_input("🔍 Buscar Cliente Deudor...", placeholder="Escribe el nombre del cliente...", key="busq_cxc")
-            
-            if busq_cxc.strip() != "":
-                df_deudas_filt = df_deudas_resumen[df_deudas_resumen['Cliente'].str.contains(busq_cxc, case=False, na=False)]
-            else:
-                df_deudas_filt = df_deudas_resumen
-
-            if df_deudas_filt.empty:
-                st.warning("No se encontraron deudores que coincidan con la búsqueda.")
-            else:
-                opciones_clientes_deuda = {f"{row['Cliente']} (Monto Pendiente: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_filt.iterrows()}
-                cliente_a_liquidar_str = st.selectbox("Selecciona el Cliente", list(opciones_clientes_deuda.keys()))
-                cliente_info = opciones_clientes_deuda[cliente_a_liquidar_str]
-                cliente_id_sel = int(cliente_info['cliente_id'])
-                deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
-                deuda_maxima_bs = deuda_maxima * tasa_oficial
-
-                tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
-                if tel_bruto.startswith("0"):
-                    num_wa = "58" + tel_bruto[1:]
-                elif tel_bruto.startswith("4"):
-                    num_wa = "58" + tel_bruto
-                else:
-                    num_wa = tel_bruto
-
-                m_nombre = cliente_info['Cliente']
-                m_monto_usd = f"${deuda_maxima:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
-                m_monto_bs = f"Bs. {deuda_maxima_bs:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
-
-                texto_msj = (
-                    f"Hola {m_nombre},\n\n"
-                    f"Queremos recordarte que tienes pagos pendientes de {m_monto_usd} ({m_monto_bs}) con Olinuts. "
-                    f"Nada mejor que llevar tus cuentas al día, por eso no olvides realizar los pagos. "
-                    f"¡Qué tengas un feliz día!"
-                )
-                
-                texto_encoded = urllib.parse.quote(texto_msj)
-                link_wa = f"https://wa.me/{num_wa}?text={texto_encoded}"
-
-                st.markdown(f'''
-                    <a href="{link_wa}" target="_blank" style="text-decoration: none;">
-                        <div style="
-                            background-color: #25D366; 
-                            color: white; 
-                            padding: 14px 20px; 
-                            border-radius: 12px; 
-                            text-align: center; 
-                            font-weight: bold; 
-                            font-size: 18px;
-                            margin-top: 10px;
-                            margin-bottom: 20px;
-                            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);">
-                            📲 Enviar Recordatorio por WhatsApp a {m_nombre}
-                        </div>
-                    </a>
-                ''', unsafe_allow_html=True)
-
-                col_ab1, col_ab2 = st.columns(2)
-                with col_ab1:
-                    monto_abono = st.number_input("Monto a Abonar ($)", min_value=0.01, max_value=deuda_maxima, value=deuda_maxima, step=0.5, format="%.2f")
-                    st.caption(f"Equivalente a: **Bs. {monto_abono * tasa_oficial:,.2f}**")
-                
-                with col_ab2:
-                    st.write("")
-                    st.write("")
-                    btn_abonar = st.button("💰 Registrar Abono / Pago", type="primary", use_container_width=True)
-
-                if btn_abonar:
-                    df_ventas_pend = ejecutar_consulta_df('''
-                        SELECT id, saldo_pendiente 
-                        FROM ventas 
-                        WHERE cliente_id = :c_id AND estado_pago = 'Pendiente' AND saldo_pendiente > 0
-                        ORDER BY fecha ASC
-                    ''', {"c_id": cliente_id_sel})
-                    
-                    abono_restante = monto_abono
-
-                    for _, v_row in df_ventas_pend.iterrows():
-                        v_id = int(v_row['id'])
-                        s_pendiente = float(v_row['saldo_pendiente'])
-                        
-                        if abono_restante <= 0:
-                            break
-                        
-                        if abono_restante >= s_pendiente:
-                            abono_restante -= s_pendiente
-                            ejecutar_comando("UPDATE ventas SET saldo_pendiente = 0.0, estado_pago = 'Pagado' WHERE id = :id", {"id": v_id})
-                        else:
-                            nuevo_saldo = s_pendiente - abono_restante
-                            ejecutar_comando("UPDATE ventas SET saldo_pendiente = :saldo WHERE id = :id", {"saldo": nuevo_saldo, "id": v_id})
-                            abono_restante = 0.0
-
-                    st.balloons()
-                    st.success(f"🎉 ¡Abono de ${monto_abono:,.2f} registrado exitosamente para {cliente_info['Cliente']}!")
+                if act_cli:
+                    supabase.table("clientes").update({"nombre": n_nombre, "telefono": n_telefono}).eq("id", cli_sel['id']).execute()
+                    st.success("✅ Cliente actualizado.")
                     st.rerun()
 
-                with st.expander("⚠️ ¿Registraste una deuda por error? Eliminar un registro de deuda"):
-                    df_ventas_del = ejecutar_consulta_df('''
-                        SELECT v.id, p.nombre AS producto, v.cantidad, v.saldo_pendiente, v.fecha, p.id AS producto_id
-                        FROM ventas v
-                        JOIN productos p ON v.producto_id = p.id
-                        WHERE v.cliente_id = :c_id AND v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
-                    ''', {"c_id": cliente_id_sel})
-
-                    if not df_ventas_del.empty:
-                        dict_del = {f"ID Venta #{row['id']} - {row['producto']} ({row['cantidad']} uds) - Pendiente: ${row['saldo_pendiente']:.2f} ({row['fecha']})": row for _, row in df_ventas_del.iterrows()}
-                        venta_del_sel_str = st.selectbox("Selecciona la venta pendiente a borrar", list(dict_del.keys()))
-                        venta_del_info = dict_del[venta_del_sel_str]
-
-                        if st.button("🗑️ Eliminar Registro de Deuda", type="primary", use_container_width=True):
-                            ejecutar_comando("UPDATE productos SET stock = stock + :cant WHERE id = :p_id", {"cant": int(venta_del_info['cantidad']), "p_id": int(venta_del_info['producto_id'])})
-                            ejecutar_comando("DELETE FROM ventas WHERE id = :v_id", {"v_id": int(venta_del_info['id'])})
-                            st.warning(f"🗑️ Registro de venta #{venta_del_info['id']} eliminado y stock restituido.")
-                            st.rerun()
-
-            st.divider()
-
-            st.markdown('<div class="sub-header-yellow">📋 Listado de Cuentas por Cobrar (Toca un cliente para ver el detalle)</div>', unsafe_allow_html=True)
-            
-            for _, row_cli in df_deudas_resumen.iterrows():
-                cli_id = int(row_cli['cliente_id'])
-                cli_nombre = row_cli['Cliente']
-                cli_tel = row_cli['Teléfono']
-                cli_deuda_usd = row_cli['Saldo Pendiente ($)']
-                cli_deuda_bs = cli_deuda_usd * tasa_oficial
-
-                titulo_expander = f"👤 {cli_nombre} | Deuda: ${cli_deuda_usd:,.2f} (~ Bs. {cli_deuda_bs:,.2f}) | 📞 {cli_tel}"
-                
-                with st.expander(titulo_expander):
-                    df_detalles_compras = ejecutar_consulta_df('''
-                        SELECT p.nombre AS "Producto",
-                               v.cantidad AS "Cantidad",
-                               v.precio_unitario AS "Precio Unit ($)",
-                               v.saldo_pendiente AS "Pendiente ($)",
-                               v.fecha AS "Fecha de Compra"
-                        FROM ventas v
-                        JOIN productos p ON v.producto_id = p.id
-                        WHERE v.cliente_id = :c_id AND v.estado_pago = 'Pendiente' AND v.saldo_pendiente > 0
-                        ORDER BY v.fecha DESC
-                    ''', {"c_id": cli_id})
-                    
-                    if not df_detalles_compras.empty:
-                        df_detalles_compras['Pendiente (Bs.)'] = df_detalles_compras['Pendiente ($)'] * tasa_oficial
-                        st.dataframe(df_detalles_compras, use_container_width=True)
+                if elim_cli:
+                    if cli_sel['id'] == 1:
+                        st.error("❌ No se puede eliminar el cliente general por defecto.")
                     else:
-                        st.info("Sin detalles disponibles.")
+                        supabase.table("ventas").update({"cliente_id": 1}).eq("cliente_id", cli_sel['id']).execute()
+                        supabase.table("clientes").delete().eq("id", cli_sel['id']).execute()
+                        st.warning("🗑️ Cliente eliminado.")
+                        st.rerun()
+
+    elif submenu == "📋 Cuentas por Cobrar":
+        res_v = supabase.table("ventas").select("id, cliente_id, saldo_pendiente, clientes(id, nombre, telefono)").eq("estado_pago", "Pendiente").gt("saldo_pendiente", 0).execute()
+        df_deudas = pd.DataFrame(res_v.data)
+
+        if df_deudas.empty:
+            st.success("🎉 ¡No hay cuentas por cobrar pendientes!")
+        else:
+            df_deudas['Cliente'] = df_deudas['clientes'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Cliente')
+            df_deudas['Teléfono'] = df_deudas['clientes'].apply(lambda x: x['telefono'] if isinstance(x, dict) else 'S/N')
+            
+            df_deudas_resumen = df_deudas.groupby(['cliente_id', 'Cliente', 'Teléfono'])['saldo_pendiente'].sum().reset_index()
+            df_deudas_resumen.rename(columns={'saldo_pendiente': 'Saldo Pendiente ($)'}, inplace=True)
+
+            total_general = df_deudas_resumen['Saldo Pendiente ($)'].sum()
+            col_m1, col_m2 = st.columns(2)
+            col_m1.metric("Total USD por Cobrar", f"${total_general:,.2f}")
+            col_m2.metric("Total Bs. por Cobrar", f"Bs. {total_general * tasa_oficial:,.2f}")
+            
+            st.markdown('<div class="sub-header-yellow">💵 Registrar Abono / Recordatorio</div>', unsafe_allow_html=True)
+            
+            opciones_deudores = {f"{row['Cliente']} (Monto: ${row['Saldo Pendiente ($)']:,.2f})": row for _, row in df_deudas_resumen.iterrows()}
+            cliente_sel_str = st.selectbox("Selecciona el Cliente", list(opciones_deudores.keys()))
+            cliente_info = opciones_deudores[cliente_sel_str]
+            cliente_id_sel = int(cliente_info['cliente_id'])
+            deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
+
+            tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
+            num_wa = "58" + tel_bruto[1:] if tel_bruto.startswith("0") else tel_bruto
+            texto_msj = f"Hola {cliente_info['Cliente']},\n\nQueremos recordarte que tienes pagos pendientes de ${deuda_maxima:,.2f} con Olinuts."
+            link_wa = f"https://wa.me/{num_wa}?text={urllib.parse.quote(texto_msj)}"
+
+            st.markdown(f'<a href="{link_wa}" target="_blank">📲 Enviar Recordatorio por WhatsApp a {cliente_info["Cliente"]}</a>', unsafe_allow_html=True)
+
+            col_ab1, col_ab2 = st.columns(2)
+            with col_ab1:
+                monto_abono = st.number_input("Monto a Abonar ($)", min_value=0.01, max_value=deuda_maxima, value=deuda_maxima, step=0.5)
+            with col_ab2:
+                btn_abonar = st.button("💰 Registrar Abono", type="primary", use_container_width=True)
+
+            if btn_abonar:
+                res_pend = supabase.table("ventas").select("id, saldo_pendiente").eq("cliente_id", cliente_id_sel).eq("estado_pago", "Pendiente").gt("saldo_pendiente", 0).order("fecha").execute()
+                abono_rest = monto_abono
+
+                for v_item in res_pend.data:
+                    if abono_rest <= 0: break
+                    s_pend = float(v_item['saldo_pendiente'])
+                    if abono_rest >= s_pend:
+                        abono_rest -= s_pend
+                        supabase.table("ventas").update({"saldo_pendiente": 0.0, "estado_pago": "Pagado"}).eq("id", v_item['id']).execute()
+                    else:
+                        nuevo_s = s_pend - abono_rest
+                        supabase.table("ventas").update({"saldo_pendiente": nuevo_s}).eq("id", v_item['id']).execute()
+                        abono_rest = 0.0
+
+                st.success(f"🎉 Abono de ${monto_abono:,.2f} registrado exitosamente.")
+                st.rerun()
 
 # ---------------------------------------------------------
-# OPCIÓN 3: PRODUCTOS E INVENTARIO
+# PRODUCTOS E INVENTARIO
 # ---------------------------------------------------------
 elif menu == "📦 Productos e Inventario":
     col_header, col_home = st.columns([3, 1])
@@ -886,56 +598,26 @@ elif menu == "📦 Productos e Inventario":
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_p", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
-    st.markdown('<div class="quick-access-title">Opciones de Inventario</div>', unsafe_allow_html=True)
-    
     inv_col1, inv_col2 = st.columns(2)
     with inv_col1:
-        st.button(
-            "📋 Listado de Productos", 
-            key="btn_inv_list", 
-            use_container_width=True, 
-            type="primary" if st.session_state['subseccion_inventario'] == "📋 Listado de Productos" else "secondary",
-            on_click=ir_a_subseccion_inventario, 
-            args=("📋 Listado de Productos",)
-        )
-        st.button(
-            "✏️ Editar / Eliminar", 
-            key="btn_inv_edit", 
-            use_container_width=True, 
-            type="primary" if st.session_state['subseccion_inventario'] == "✏️ Editar / Eliminar" else "secondary",
-            on_click=ir_a_subseccion_inventario, 
-            args=("✏️ Editar / Eliminar",)
-        )
-
+        st.button("📋 Listado de Productos", key="btn_inv_list", use_container_width=True, on_click=ir_a_subseccion_inventario, args=("📋 Listado de Productos",))
+        st.button("✏️ Editar / Eliminar", key="btn_inv_edit", use_container_width=True, on_click=ir_a_subseccion_inventario, args=("✏️ Editar / Eliminar",))
     with inv_col2:
-        st.button(
-            "➕ Agregar Producto", 
-            key="btn_inv_add", 
-            use_container_width=True, 
-            type="primary" if st.session_state['subseccion_inventario'] == "➕ Agregar Nuevo Producto" else "secondary",
-            on_click=ir_a_subseccion_inventario, 
-            args=("➕ Agregar Nuevo Producto",)
-        )
+        st.button("➕ Agregar Producto", key="btn_inv_add", use_container_width=True, on_click=ir_a_subseccion_inventario, args=("➕ Agregar Nuevo Producto",))
 
     st.divider()
-
     sub_inv = st.session_state['subseccion_inventario']
 
     if sub_inv == "📋 Listado de Productos":
-        st.markdown('<div class="sub-header-yellow">📋 Listado de Productos</div>', unsafe_allow_html=True)
-        df_prods = ejecutar_consulta_df("SELECT id AS \"ID\", nombre AS \"Producto\", costo_unitario AS \"Costo ($)\", precio_venta AS \"Precio ($)\", stock AS \"Stock\" FROM productos ORDER BY nombre ASC")
-        
+        res_p = supabase.table("productos").select("id, nombre, costo_unitario, precio_venta, stock").order("nombre").execute()
+        df_prods = pd.DataFrame(res_p.data)
         if not df_prods.empty:
-            busq_prod_gen = st.text_input("🔍 Buscar Producto...", placeholder="Escribe para buscar un producto...")
-            if busq_prod_gen.strip() != "":
-                df_prods = df_prods[df_prods['Producto'].str.contains(busq_prod_gen, case=False, na=False)]
-            df_prods['Precio (Bs.)'] = df_prods['Precio ($)'] * tasa_oficial
+            df_prods['Precio (Bs.)'] = df_prods['precio_venta'] * tasa_oficial
             st.dataframe(df_prods, use_container_width=True)
         else:
-            st.info("No hay productos registrados aún.")
+            st.info("No hay productos registrados.")
 
     elif sub_inv == "➕ Agregar Nuevo Producto":
-        st.markdown('<div class="sub-header-yellow">➕ Agregar Nuevo Producto</div>', unsafe_allow_html=True)
         with st.form("form_producto"):
             nombre = st.text_input("Nombre del Producto")
             col1, col2, col3 = st.columns(3)
@@ -945,54 +627,42 @@ elif menu == "📦 Productos e Inventario":
 
             if st.form_submit_button("Guardar Producto"):
                 if nombre.strip() != "":
-                    ejecutar_comando("INSERT INTO productos (nombre, costo_unitario, precio_venta, stock) VALUES (:nom, :cost, :prec, :stk)", {"nom": nombre, "cost": costo, "prec": precio, "stk": stock})
+                    supabase.table("productos").insert({"nombre": nombre, "costo_unitario": costo, "precio_venta": precio, "stock": stock}).execute()
                     st.success(f"✅ Producto '{nombre}' agregado.")
                     st.rerun()
 
     elif sub_inv == "✏️ Editar / Eliminar":
-        st.markdown('<div class="sub-header-yellow">✏️ Editar o Eliminar Producto Existente</div>', unsafe_allow_html=True)
-        df_prods_edit = ejecutar_consulta_df("SELECT * FROM productos ORDER BY nombre ASC")
+        res_p = supabase.table("productos").select("*").order("nombre").execute()
+        df_prods_edit = pd.DataFrame(res_p.data)
 
         if not df_prods_edit.empty:
-            busq_prod_ed = st.text_input("🔍 Buscar Producto por Nombre...", placeholder="Escribe para buscar el producto...", key="busq_prod_ed")
-            
-            if busq_prod_ed.strip() != "":
-                df_prods_edit_filt = df_prods_edit[df_prods_edit['nombre'].str.contains(busq_prod_ed, case=False, na=False)]
-            else:
-                df_prods_edit_filt = df_prods_edit
+            dict_prods = {f"{row['nombre']} (ID: {row['id']})": row for _, row in df_prods_edit.iterrows()}
+            prod_edit_str = st.selectbox("Selecciona el producto", list(dict_prods.keys()))
+            prod_sel = dict_prods[prod_edit_str]
 
-            if df_prods_edit_filt.empty:
-                st.warning("No se encontraron productos que coincidan con la búsqueda.")
-            else:
-                dict_prods = {f"{row['nombre']} (ID: {row['id']})": row for _, row in df_prods_edit_filt.iterrows()}
-                prod_edit_str = st.selectbox("Selecciona el producto a modificar", list(dict_prods.keys()))
-                prod_sel = dict_prods[prod_edit_str]
+            with st.form("form_editar"):
+                n_nombre = st.text_input("Nombre", value=prod_sel['nombre'])
+                c1, c2, c3 = st.columns(3)
+                with c1: n_costo = st.number_input("Costo ($)", min_value=0.0, value=float(prod_sel['costo_unitario']), format="%.2f")
+                with c2: n_precio = st.number_input("Precio ($)", min_value=0.0, value=float(prod_sel['precio_venta']), format="%.2f")
+                with c3: n_stock = st.number_input("Stock", min_value=0, value=int(prod_sel['stock']), step=1)
 
-                with st.form("form_editar"):
-                    n_nombre = st.text_input("Nombre", value=prod_sel['nombre'])
-                    c1, c2, c3 = st.columns(3)
-                    with c1: n_costo = st.number_input("Costo ($)", min_value=0.0, value=float(prod_sel['costo_unitario']), format="%.2f")
-                    with c2: n_precio = st.number_input("Precio ($)", min_value=0.0, value=float(prod_sel['precio_venta']), format="%.2f")
-                    with c3: n_stock = st.number_input("Stock", min_value=0, value=int(prod_sel['stock']), step=1)
+                col_b1, col_b2 = st.columns(2)
+                with col_b1: act = st.form_submit_button("💾 Actualizar", type="primary")
+                with col_b2: elim = st.form_submit_button("🗑️ Eliminar")
 
-                    col_b1, col_b2 = st.columns(2)
-                    with col_b1: act = st.form_submit_button("💾 Actualizar Cambios", type="primary")
-                    with col_b2: elim = st.form_submit_button("🗑️ Eliminar Producto")
+                if act:
+                    supabase.table("productos").update({"nombre": n_nombre, "costo_unitario": n_costo, "precio_venta": n_precio, "stock": n_stock}).eq("id", prod_sel['id']).execute()
+                    st.success("✅ Producto actualizado.")
+                    st.rerun()
 
-                    if act:
-                        ejecutar_comando("UPDATE productos SET nombre=:nom, costo_unitario=:cost, precio_venta=:prec, stock=:stk WHERE id=:id", {"nom": n_nombre, "cost": n_costo, "prec": n_precio, "stk": n_stock, "id": int(prod_sel['id'])})
-                        st.success("✅ Producto actualizado.")
-                        st.rerun()
-
-                    if elim:
-                        ejecutar_comando("DELETE FROM productos WHERE id=:id", {"id": int(prod_sel['id'])})
-                        st.warning("🗑️ Producto eliminado.")
-                        st.rerun()
-        else:
-            st.info("No hay productos disponibles para editar.")
+                if elim:
+                    supabase.table("productos").delete().eq("id", prod_sel['id']).execute()
+                    st.warning("🗑️ Producto eliminado.")
+                    st.rerun()
 
 # ---------------------------------------------------------
-# OPCIÓN 4: CALENDARIO ANUAL DE VENTAS
+# CALENDARIO ANUAL DE VENTAS
 # ---------------------------------------------------------
 elif menu == "📅 Calendario Anual de Ventas":
     col_header, col_home = st.columns([3, 1])
@@ -1003,100 +673,42 @@ elif menu == "📅 Calendario Anual de Ventas":
 
     col_anio, col_mes = st.columns(2)
     with col_anio:
-        anio_sel = st.selectbox("Selecciona el Año", list(range(2024, 2031)), index=2)
+        anio_sel = st.selectbox("Año", list(range(2024, 2031)), index=2)
     with col_mes:
-        meses_nombres = {
-            1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 
-            5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto", 
-            9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
-        }
-        mes_sel_nombre = st.selectbox("Selecciona el Mes", list(meses_nombres.values()), index=datetime.now().month - 1)
+        meses_nombres = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
+        mes_sel_nombre = st.selectbox("Mes", list(meses_nombres.values()), index=datetime.now().month - 1)
         mes_sel = [k for k, v in meses_nombres.items() if v == mes_sel_nombre][0]
 
-    st.markdown(f'<div class="sub-header-yellow">📊 Resumen diario de {mes_sel_nombre} {anio_sel}</div>', unsafe_allow_html=True)
-
     mes_str = f"{anio_sel}-{mes_sel:02d}"
-    df_ventas_mes = ejecutar_consulta_df('''
-        SELECT v.fecha, (v.cantidad * v.precio_unitario) AS ingreso, v.cantidad, p.nombre AS producto, c.nombre AS cliente
-        FROM ventas v
-        JOIN productos p ON v.producto_id = p.id
-        LEFT JOIN clientes c ON v.cliente_id = c.id
-        WHERE v.fecha LIKE :mes
-    ''', {"mes": f"{mes_str}%"})
+    res_v = supabase.table("ventas").select("fecha, cantidad, precio_unitario").like("fecha", f"{mes_str}%").execute()
+    df_ventas_mes = pd.DataFrame(res_v.data)
 
     ventas_por_dia = {}
     if not df_ventas_mes.empty:
+        df_ventas_mes['ingreso'] = df_ventas_mes['cantidad'] * df_ventas_mes['precio_unitario']
         df_ventas_mes['dia'] = pd.to_datetime(df_ventas_mes['fecha']).dt.day
         ventas_por_dia = df_ventas_mes.groupby('dia')['ingreso'].sum().to_dict()
 
     cal = calendar.monthcalendar(anio_sel, mes_sel)
-    dias_semana = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-
     cols_dias = st.columns(7)
-    for i, d_nombre in enumerate(dias_semana):
-        cols_dias[i].markdown(f"<div style='text-align: center; font-weight: bold; color: #444;'>{d_nombre}</div>", unsafe_allow_html=True)
+    for i, d_nombre in enumerate(["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]):
+        cols_dias[i].markdown(f"<div style='text-align: center; font-weight: bold;'>{d_nombre}</div>", unsafe_allow_html=True)
 
     for semana in cal:
         cols_semana = st.columns(7)
         for i, dia in enumerate(semana):
             with cols_semana[i]:
                 if dia == 0:
-                    st.markdown("<div style='color: #CCC; text-align: center; padding: 15px;'>-</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='color: #CCC; text-align: center;'>-</div>", unsafe_allow_html=True)
                 else:
                     monto_dia = ventas_por_dia.get(dia, 0.0)
-                    monto_dia_bs = monto_dia * tasa_oficial
-                    
                     if monto_dia > 0:
-                        st.markdown(f'''
-                            <div class="day-box-active">
-                                <b style="font-size: 18px; color: #333;">{dia}</b><br>
-                                <span style="color: #00A86B; font-weight: bold; font-size: 14px;">${monto_dia:,.2f}</span><br>
-                                <span style="color: #666; font-size: 11px;">Bs. {monto_dia_bs:,.0f}</span>
-                            </div>
-                        ''', unsafe_allow_html=True)
+                        st.markdown(f'<div class="day-box-active"><b>{dia}</b><br><span style="color: #00A86B;">${monto_dia:,.2f}</span></div>', unsafe_allow_html=True)
                     else:
-                        st.markdown(f'''
-                            <div class="day-box">
-                                <b style="font-size: 18px; color: #777;">{dia}</b><br>
-                                <span style="color: #999; font-size: 13px;">$0.00</span>
-                            </div>
-                        ''', unsafe_allow_html=True)
-
-    st.divider()
-    st.markdown('<div class="sub-header-yellow">🔍 Consultar Detalle de un Día Específico</div>', unsafe_allow_html=True)
-    
-    dias_del_mes = list(range(1, calendar.monthrange(anio_sel, mes_sel)[1] + 1))
-    dia_elegido = st.selectbox("Selecciona el día para ver las ventas detalladas", dias_del_mes, index=datetime.now().day - 1 if datetime.now().month == mes_sel and datetime.now().year == anio_sel else 0)
-
-    fecha_busqueda = f"{anio_sel}-{mes_sel:02d}-{dia_elegido:02d}"
-    
-    df_detalle_dia = ejecutar_consulta_df('''
-        SELECT v.id AS "ID", p.nombre AS "Producto", c.nombre AS "Cliente",
-               v.cantidad AS "Cant", v.precio_unitario AS "Precio ($)", 
-               (v.cantidad * v.precio_unitario) AS "Total ($)",
-               v.fecha AS "Fecha y Hora"
-        FROM ventas v
-        JOIN productos p ON v.producto_id = p.id
-        LEFT JOIN clientes c ON v.cliente_id = c.id
-        WHERE v.fecha LIKE :fec
-        ORDER BY v.fecha DESC
-    ''', {"fec": f"{fecha_busqueda}%"})
-
-    if not df_detalle_dia.empty:
-        total_dia_usd = df_detalle_dia['Total ($)'].sum()
-        total_dia_bs = total_dia_usd * tasa_oficial
-        
-        col_t1, col_t2 = st.columns(2)
-        col_t1.metric(f"Total Ventas Día {dia_elegido} / {mes_sel_nombre}", f"${total_dia_usd:,.2f}")
-        col_t2.metric("Total en Bolívares", f"Bs. {total_dia_bs:,.2f}")
-        
-        df_detalle_dia['Total (Bs.)'] = df_detalle_dia['Total ($)'] * tasa_oficial
-        st.dataframe(df_detalle_dia, use_container_width=True)
-    else:
-        st.info(f"No se registraron ventas para el día {dia_elegido} de {mes_sel_nombre} de {anio_sel}.")
+                        st.markdown(f'<div class="day-box"><b>{dia}</b><br><span style="color: #999;">$0.00</span></div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# OPCIÓN 5: REPORTES Y MÉTRICAS
+# REPORTES Y MÉTRICAS
 # ---------------------------------------------------------
 elif menu == "📈 Reportes y Métricas":
     col_header, col_home = st.columns([3, 1])
@@ -1105,26 +717,21 @@ elif menu == "📈 Reportes y Métricas":
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_r", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
-    df_ventas = ejecutar_consulta_df('''
-        SELECT v.id AS "ID Venta", p.nombre AS "Producto", c.nombre AS "Cliente",
-               v.cantidad AS "Cantidad", v.precio_unitario AS "Precio Unit. ($)", 
-               (v.cantidad * v.precio_unitario) AS "Ingreso Total ($)",
-               v.saldo_pendiente AS "Saldo Pendiente ($)",
-               v.ganancia_total AS "Ganancia ($)", v.estado_pago AS "Estado de Pago", v.fecha AS "Fecha"
-        FROM ventas v
-        JOIN productos p ON v.producto_id = p.id
-        LEFT JOIN clientes c ON v.cliente_id = c.id
-        ORDER BY v.id DESC
-    ''')
+    res_v = supabase.table("ventas").select("id, cantidad, precio_unitario, ganancia_total, estado_pago, fecha, productos(nombre), clientes(nombre)").order("id", desc=True).execute()
+    df_ventas = pd.DataFrame(res_v.data)
 
     if not df_ventas.empty:
-        total_ingresos = df_ventas['Ingreso Total ($)'].sum()
-        total_ganancias = df_ventas['Ganancia ($)'].sum()
+        df_ventas['Producto'] = df_ventas['productos'].apply(lambda x: x['nombre'] if isinstance(x, dict) else '')
+        df_ventas['Cliente'] = df_ventas['clientes'].apply(lambda x: x['nombre'] if isinstance(x, dict) else '')
+        df_ventas['Ingreso Total ($)'] = df_ventas['cantidad'] * df_ventas['precio_unitario']
+        
+        total_ingresos = float(df_ventas['Ingreso Total ($)'].sum())
+        total_ganancias = float(df_ventas['ganancia_total'].sum())
         
         col1, col2 = st.columns(2)
-        col1.metric("Ingresos Totales", f"${total_ingresos:,.2f}", delta=f"Bs. {total_ingresos * tasa_oficial:,.2f}")
-        col2.metric("Ganancia Neta Total", f"${total_ganancias:,.2f}", delta=f"Bs. {total_ganancias * tasa_oficial:,.2f}")
+        col1.metric("Ingresos Totales", f"${total_ingresos:,.2f}", f"Bs. {total_ingresos * tasa_oficial:,.2f}")
+        col2.metric("Ganancia Neta Total", f"${total_ganancias:,.2f}", f"Bs. {total_ganancias * tasa_oficial:,.2f}")
         st.divider()
-        st.dataframe(df_ventas, use_container_width=True)
+        st.dataframe(df_ventas[['id', 'Producto', 'Cliente', 'cantidad', 'precio_unitario', 'Ingreso Total ($)', 'ganancia_total', 'estado_pago', 'fecha']], use_container_width=True)
     else:
-        st.info("Aún no hay ventas registradas para generar reportes.")
+        st.info("Aún no hay ventas registradas.")
