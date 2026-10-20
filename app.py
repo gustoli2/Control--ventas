@@ -182,11 +182,49 @@ st.markdown("""
         padding: 16px;
         border: 1px solid #EEEEEE;
     }
-    .day-box {
-        background-color: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 10px; padding: 10px; text-align: center; min-height: 95px; margin-bottom: 10px;
+
+    /* ESTILOS ALMANAQUE */
+    .cal-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 6px;
+        margin-bottom: 20px;
     }
-    .day-box-active {
-        background-color: #FFFDE7; border: 2px solid #FBC02D; border-radius: 10px; padding: 10px; text-align: center; min-height: 95px; margin-bottom: 10px;
+    .cal-header-day {
+        background-color: #FFDE59;
+        font-weight: bold;
+        text-align: center;
+        padding: 8px 2px;
+        border-radius: 8px;
+        font-size: 14px !important;
+        color: #111;
+    }
+    .cal-day-card {
+        background-color: #FFFFFF;
+        border: 1px solid #E0E0E0;
+        border-radius: 10px;
+        padding: 8px 4px;
+        text-align: center;
+        min-height: 70px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    .cal-day-active {
+        background-color: #FFFDE7;
+        border: 2px solid #FBC02D;
+        border-radius: 10px;
+        padding: 8px 4px;
+        text-align: center;
+        min-height: 70px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    .cal-day-empty {
+        background-color: transparent;
+        border: none;
+        min-height: 70px;
     }
 
     /* ESTILOS CATÁLOGO DE PRODUCTOS */
@@ -283,7 +321,7 @@ opciones_menu = [
     "💰 Transacciones Pagadas",
     "👥 Clientes y Cuentas por Cobrar", 
     "📦 Productos e Inventario", 
-    "📅 Calendario Anual de Ventas",
+    "📅 Almanaque de Ventas",
     "📈 Reportes y Métricas"
 ]
 
@@ -347,7 +385,7 @@ if menu == "🏠 Inicio / Dashboard":
         st.button("👥  Gestión de Clientes", key="btn_deu", use_container_width=True, on_click=ir_a_seccion, args=("👥 Clientes y Cuentas por Cobrar",))
 
     st.button("💰  Transacciones Pagadas", key="btn_trans_pag", use_container_width=True, on_click=ir_a_seccion, args=("💰 Transacciones Pagadas",))
-    st.button("📅  Calendario Anual de Ventas", key="btn_cal_home", use_container_width=True, on_click=ir_a_seccion, args=("📅 Calendario Anual de Ventas",))
+    st.button("📅  Almanaque de Ventas", key="btn_cal_home", use_container_width=True, on_click=ir_a_seccion, args=("📅 Almanaque de Ventas",))
 
     st.divider()
 
@@ -1072,12 +1110,12 @@ elif menu == "📦 Productos e Inventario":
                         st.error(f"❌ Error al eliminar: {e}")
 
 # ---------------------------------------------------------
-# CALENDARIO ANUAL DE VENTAS
+# ALMANAQUE DE VENTAS (REDISEÑADO)
 # ---------------------------------------------------------
-elif menu == "📅 Calendario Anual de Ventas":
+elif menu == "📅 Almanaque de Ventas":
     col_header, col_home = st.columns([3, 1])
     with col_header:
-        st.markdown('<div class="section-header-yellow">📅 Calendario Anual de Ventas</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header-yellow">📅 Almanaque de Ventas</div>', unsafe_allow_html=True)
     with col_home:
         st.button("🏠 Volver al Inicio", key="btn_home_cal", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
 
@@ -1090,7 +1128,8 @@ elif menu == "📅 Calendario Anual de Ventas":
         mes_sel = [k for k, v in meses_nombres.items() if v == mes_sel_nombre][0]
 
     mes_str = f"{anio_sel}-{mes_sel:02d}"
-    res_v = supabase.table("ventas").select("fecha, cantidad, precio_unitario").like("fecha", f"{mes_str}%").execute()
+    
+    res_v = supabase.table("ventas").select("id, fecha, cantidad, precio_unitario, ganancia_total, clientes(nombre), productos(nombre)").like("fecha", f"{mes_str}%").execute()
     df_ventas_mes = pd.DataFrame(res_v.data)
 
     ventas_por_dia = {}
@@ -1099,23 +1138,88 @@ elif menu == "📅 Calendario Anual de Ventas":
         df_ventas_mes['dia'] = pd.to_datetime(df_ventas_mes['fecha']).dt.day
         ventas_por_dia = df_ventas_mes.groupby('dia')['ingreso'].sum().to_dict()
 
-    cal = calendar.monthcalendar(anio_sel, mes_sel)
-    cols_dias = st.columns(7)
-    for i, d_nombre in enumerate(["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]):
-        cols_dias[i].markdown(f"<div style='text-align: center; font-weight: bold;'>{d_nombre}</div>", unsafe_allow_html=True)
+    st.markdown('<div class="sub-header-yellow">🗓️ Vistas de Ventas del Mes</div>', unsafe_allow_html=True)
 
+    # Cabecera de los días de la semana
+    dias_semana_html = "".join([f'<div class="cal-header-day">{d}</div>' for d in ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]])
+    
+    cal = calendar.monthcalendar(anio_sel, mes_sel)
+    dias_grid_html = ""
+    
     for semana in cal:
-        cols_semana = st.columns(7)
-        for i, dia in enumerate(semana):
-            with cols_semana[i]:
-                if dia == 0:
-                    st.markdown("<div style='color: #CCC; text-align: center;'>-</div>", unsafe_allow_html=True)
+        for dia in semana:
+            if dia == 0:
+                dias_grid_html += '<div class="cal-day-empty"></div>'
+            else:
+                monto_dia = ventas_por_dia.get(dia, 0.0)
+                if monto_dia > 0:
+                    dias_grid_html += f'''
+                        <div class="cal-day-active">
+                            <span style="font-weight: bold; font-size: 16px; color: #111;">{dia}</span>
+                            <span style="font-size: 13px; font-weight: bold; color: #00A86B;">${monto_dia:,.2f}</span>
+                        </div>
+                    '''
                 else:
-                    monto_dia = ventas_por_dia.get(dia, 0.0)
-                    if monto_dia > 0:
-                        st.markdown(f'<div class="day-box-active"><b>{dia}</b><br><span style="color: #00A86B;">${monto_dia:,.2f}</span></div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown(f'<div class="day-box"><b>{dia}</b><br><span style="color: #999;">$0.00</span></div>', unsafe_allow_html=True)
+                    dias_grid_html += f'''
+                        <div class="cal-day-card">
+                            <span style="font-weight: bold; font-size: 16px; color: #333;">{dia}</span>
+                            <span style="font-size: 12px; color: #BBB;">$0</span>
+                        </div>
+                    '''
+
+    html_almanaque = f'''
+        <div class="cal-grid">
+            {dias_semana_html}
+            {dias_grid_html}
+        </div>
+    '''
+    st.markdown(html_almanaque, unsafe_allow_html=True)
+
+    st.divider()
+
+    # DESPLIEGUE DE OPERACIONES POR DÍA
+    st.markdown('<div class="sub-header-yellow">🔍 Consultar Operaciones de un Día</div>', unsafe_allow_html=True)
+    
+    num_dias_mes = calendar.monthrange(anio_sel, mes_sel)[1]
+    opciones_dias = list(range(1, num_dias_mes + 1))
+    
+    # Pre-seleccionar el día de hoy si está en el mes actual
+    dia_defecto = date.today().day if (date.today().month == mes_sel and date.today().year == anio_sel) else 1
+    dia_elegido = st.selectbox("📅 Selecciona un día para ver operaciones:", opciones_dias, index=dia_defecto - 1)
+
+    fecha_consulta_str = f"{anio_sel}-{mes_sel:02d}-{dia_elegido:02d}"
+
+    if not df_ventas_mes.empty:
+        df_ventas_dia = df_ventas_mes[df_ventas_mes['fecha'].str.startswith(fecha_consulta_str)].copy()
+    else:
+        df_ventas_dia = pd.DataFrame()
+
+    if df_ventas_dia.empty:
+        st.info(f"ℹ️ No se registraron ventas el **{dia_elegido} de {mes_sel_nombre} de {anio_sel}**.")
+    else:
+        df_ventas_dia['Cliente'] = df_ventas_dia['clientes'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Cliente')
+        df_ventas_dia['Producto'] = df_ventas_dia['productos'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Producto')
+        df_ventas_dia['Monto Total ($)'] = df_ventas_dia['cantidad'] * df_ventas_dia['precio_unitario']
+
+        monto_dia_tot = float(df_ventas_dia['Monto Total ($)'].sum())
+        ganancia_dia_tot = float(df_ventas_dia['ganancia_total'].sum())
+
+        c_met1, c_met2 = st.columns(2)
+        c_met1.metric(f"Total Vendido el {dia_elegido} de {mes_sel_nombre}", f"${monto_dia_tot:,.2f}", f"Bs. {monto_dia_tot * tasa_oficial:,.2f}")
+        c_met2.metric("Ganancia Total del Día", f"${ganancia_dia_tot:,.2f}")
+
+        st.caption(f"📋 Operaciones registradas el **{dia_elegido}/{mes_sel:02d}/{anio_sel}**:")
+        
+        df_display_dia = df_ventas_dia[['id', 'Cliente', 'Producto', 'cantidad', 'precio_unitario', 'Monto Total ($)', 'ganancia_total', 'fecha']].copy()
+        df_display_dia.rename(columns={
+            'id': 'ID Venta',
+            'cantidad': 'Cantidad',
+            'precio_unitario': 'Precio Unit ($)',
+            'ganancia_total': 'Ganancia ($)',
+            'fecha': 'Hora'
+        }, inplace=True)
+
+        st.dataframe(df_display_dia, use_container_width=True)
 
 # ---------------------------------------------------------
 # REPORTES Y MÉTRICAS
