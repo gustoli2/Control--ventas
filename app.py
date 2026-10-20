@@ -183,6 +183,58 @@ st.markdown("""
         border: 1px solid #EEEEEE;
     }
 
+    /* ESTILOS TABLA ALMANAQUE TIPO GOOGLE CALENDAR */
+    .calendar-table {
+        width: 100%;
+        border-collapse: collapse;
+        background-color: #FFFFFF;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.04);
+        margin-bottom: 20px;
+    }
+    .calendar-table th {
+        background-color: #FFDE59;
+        color: #111111;
+        text-align: center;
+        padding: 10px;
+        font-size: 16px !important;
+        font-weight: bold;
+        border: 1px solid #E0E0E0;
+    }
+    .calendar-table td {
+        width: 14.28%;
+        height: 80px;
+        vertical-align: top;
+        padding: 6px;
+        border: 1px solid #E0E0E0;
+        background-color: #FFFFFF;
+        text-align: left;
+    }
+    .calendar-table td.empty-day {
+        background-color: #FAFAFA;
+    }
+    .calendar-table td.active-day {
+        background-color: #FFFDE7;
+        border: 1.5px solid #FBC02D;
+    }
+    .day-number {
+        font-weight: bold;
+        font-size: 15px !important;
+        color: #222;
+        display: block;
+        margin-bottom: 4px;
+    }
+    .day-amount {
+        font-size: 12px !important;
+        font-weight: bold;
+        color: #00A86B;
+        background-color: #E8F5E9;
+        padding: 2px 4px;
+        border-radius: 4px;
+        display: inline-block;
+    }
+
     /* ESTILOS CATÁLOGO DE PRODUCTOS */
     .product-card {
         background-color: #FFFFFF;
@@ -1066,7 +1118,7 @@ elif menu == "📦 Productos e Inventario":
                         st.error(f"❌ Error al eliminar: {e}")
 
 # ---------------------------------------------------------
-# ALMANAQUE DE VENTAS (NATIVO STREAMLIT)
+# ALMANAQUE DE VENTAS (TABLA TIPO GOOGLE CALENDAR)
 # ---------------------------------------------------------
 elif menu == "📅 Almanaque de Ventas":
     col_header, col_home = st.columns([3, 1])
@@ -1096,33 +1148,41 @@ elif menu == "📅 Almanaque de Ventas":
 
     st.markdown('<div class="sub-header-yellow">🗓️ Calendario de Ventas del Mes</div>', unsafe_allow_html=True)
 
-    # Cabecera Días de la Semana
-    dias_nom = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-    cols_hdr = st.columns(7)
-    for idx, d_n in enumerate(dias_nom):
-        cols_hdr[idx].markdown(f"**{d_n}**")
-
-    # Renderizado Nativo de la Matriz del Almanaque
+    # Construcción de la tabla de almanaque tipo Google Calendar
     cal = calendar.monthcalendar(anio_sel, mes_sel)
+    
+    table_html = '<table class="calendar-table">'
+    table_html += '<tr><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th>Sáb</th><th>Dom</th></tr>'
+    
     for semana in cal:
-        cols_sem = st.columns(7)
-        for idx_d, dia in enumerate(semana):
-            with cols_sem[idx_d]:
-                if dia == 0:
-                    st.write("")
+        table_html += '<tr>'
+        for dia in semana:
+            if dia == 0:
+                table_html += '<td class="empty-day"></td>'
+            else:
+                monto_dia = ventas_por_dia.get(dia, 0.0)
+                if monto_dia > 0:
+                    table_html += f'''
+                        <td class="active-day">
+                            <span class="day-number">{dia}</span>
+                            <span class="day-amount">${monto_dia:,.2f}</span>
+                        </td>
+                    '''
                 else:
-                    monto_dia = ventas_por_dia.get(dia, 0.0)
-                    if monto_dia > 0:
-                        st.markdown(f"**{dia}**")
-                        st.caption(f"🟢 ${monto_dia:,.2f}")
-                    else:
-                        st.markdown(f"**{dia}**")
-                        st.caption("$0")
+                    table_html += f'''
+                        <td>
+                            <span class="day-number" style="color: #666;">{dia}</span>
+                        </td>
+                    '''
+        table_html += '</tr>'
+    table_html += '</table>'
+
+    st.markdown(table_html, unsafe_allow_html=True)
 
     st.divider()
 
     # DESPLIEGUE Y CONSULTA DE OPERACIONES DE UN DÍA
-    st.markdown('<div class="sub-header-yellow">🔍 Consultar Operaciones de un Día Especifico</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header-yellow">🔍 Consultar Operaciones de un Día Específico</div>', unsafe_allow_html=True)
     
     num_dias_mes = calendar.monthrange(anio_sel, mes_sel)[1]
     opciones_dias = list(range(1, num_dias_mes + 1))
