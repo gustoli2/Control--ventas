@@ -1,4 +1,5 @@
 import os
+import base64
 import streamlit as st
 import pandas as pd
 import requests
@@ -86,6 +87,14 @@ def ir_a_subseccion_clientes(nombre_subseccion):
 
 def ir_a_subseccion_inventario(nombre_subseccion):
     st.session_state['subseccion_inventario'] = nombre_subseccion
+
+def archivo_a_base64(uploaded_file):
+    if uploaded_file is not None:
+        bytes_data = uploaded_file.getvalue()
+        base64_str = base64.b64encode(bytes_data).decode('utf-8')
+        mime_type = uploaded_file.type
+        return f"data:{mime_type};base64,{base64_str}"
+    return ""
 
 # --- ESTILOS CSS ---
 st.markdown("""
@@ -949,7 +958,7 @@ elif menu == "📦 Productos e Inventario":
                         badge_html = f'<span class="badge-in-stock">Disponible: {p_stock} uds</span>'
 
                     if p_img_url and str(p_img_url).strip() != "":
-                        icon_html = f'<img src="{p_img_url}" alt="{p_name}">'
+                        icon_html = f'<img src="{p_img_url}">'
                     else:
                         icon_html = '🥜'
 
@@ -970,9 +979,12 @@ elif menu == "📦 Productos e Inventario":
 
     elif sub_inv == "➕ Agregar Nuevo Producto":
         st.markdown('<div class="sub-header-yellow">➕ Agregar Nuevo Producto</div>', unsafe_allow_html=True)
+        
+        uploaded_img = st.file_uploader("📷 Subir Fotografía del Producto (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"], key="up_img_new")
+        imagen_url_txt = st.text_input("🔗 O pegar URL de la Imagen (Opcional)", placeholder="https://ejemplo.com/imagen.jpg", key="txt_img_new")
+
         with st.form("form_producto"):
             nombre = st.text_input("Nombre del Producto")
-            imagen_url = st.text_input("URL de la Imagen/Fotografía (Opcional)", placeholder="https://ejemplo.com/imagen.jpg")
             col1, col2, col3 = st.columns(3)
             with col1: costo = st.number_input("Costo Unitario ($)", min_value=0.0, format="%.2f")
             with col2: precio = st.number_input("Precio de Venta ($)", min_value=0.0, format="%.2f")
@@ -981,12 +993,18 @@ elif menu == "📦 Productos e Inventario":
             if st.form_submit_button("Guardar Producto"):
                 if nombre.strip() != "":
                     try:
+                        final_img_str = ""
+                        if uploaded_img is not None:
+                            final_img_str = archivo_a_base64(uploaded_img)
+                        elif imagen_url_txt.strip() != "":
+                            final_img_str = str(imagen_url_txt.strip())
+
                         nuevo_producto = {
                             "nombre": str(nombre.strip()),
                             "costo_unitario": float(costo),
                             "precio_venta": float(precio),
                             "stock": int(stock),
-                            "imagen_url": str(imagen_url.strip()) if imagen_url else ""
+                            "imagen_url": final_img_str
                         }
                         supabase.table("productos").insert(nuevo_producto).execute()
                         st.success(f"✅ Producto '{nombre}' agregado exitosamente.")
@@ -1005,9 +1023,16 @@ elif menu == "📦 Productos e Inventario":
             prod_edit_str = st.selectbox("Selecciona el producto", list(dict_prods.keys()))
             prod_sel = dict_prods[prod_edit_str]
 
+            img_actual = prod_sel.get('imagen_url', '')
+            if img_actual and str(img_actual).strip() != "":
+                st.caption("📷 Vista previa de la foto actual:")
+                st.markdown(f'<div style="width: 100px; height: 100px; border-radius: 12px; overflow: hidden;"><img src="{img_actual}" style="width: 100%; height: 100%; object-fit: cover;"></div>', unsafe_allow_html=True)
+
+            uploaded_img_edit = st.file_uploader("📷 Subir/Cambiar Fotografía del Producto", type=["png", "jpg", "jpeg"], key="up_img_edit")
+            n_imagen_url = st.text_input("🔗 O cambiar URL de la Imagen", value=img_actual if not str(img_actual).startswith("data:image") else "", key="txt_img_edit")
+
             with st.form("form_editar"):
                 n_nombre = st.text_input("Nombre", value=prod_sel['nombre'])
-                n_imagen_url = st.text_input("URL de la Imagen/Fotografía", value=prod_sel.get('imagen_url', ''))
                 c1, c2, c3 = st.columns(3)
                 with c1: n_costo = st.number_input("Costo ($)", min_value=0.0, value=float(prod_sel['costo_unitario']), format="%.2f")
                 with c2: n_precio = st.number_input("Precio ($)", min_value=0.0, value=float(prod_sel['precio_venta']), format="%.2f")
@@ -1019,12 +1044,19 @@ elif menu == "📦 Productos e Inventario":
 
                 if act:
                     try:
+                        if uploaded_img_edit is not None:
+                            final_img_str = archivo_a_base64(uploaded_img_edit)
+                        elif n_imagen_url.strip() != "":
+                            final_img_str = str(n_imagen_url.strip())
+                        else:
+                            final_img_str = img_actual
+
                         supabase.table("productos").update({
                             "nombre": str(n_nombre.strip()),
                             "costo_unitario": float(n_costo),
                             "precio_venta": float(n_precio),
                             "stock": int(n_stock),
-                            "imagen_url": str(n_imagen_url.strip())
+                            "imagen_url": final_img_str
                         }).eq("id", int(prod_sel['id'])).execute()
                         st.success("✅ Producto actualizado.")
                         st.rerun()
