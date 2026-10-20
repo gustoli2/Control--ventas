@@ -183,50 +183,6 @@ st.markdown("""
         border: 1px solid #EEEEEE;
     }
 
-    /* ESTILOS ALMANAQUE */
-    .cal-grid {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 6px;
-        margin-bottom: 20px;
-    }
-    .cal-header-day {
-        background-color: #FFDE59;
-        font-weight: bold;
-        text-align: center;
-        padding: 8px 2px;
-        border-radius: 8px;
-        font-size: 14px !important;
-        color: #111;
-    }
-    .cal-day-card {
-        background-color: #FFFFFF;
-        border: 1px solid #E0E0E0;
-        border-radius: 10px;
-        padding: 8px 4px;
-        text-align: center;
-        min-height: 70px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-    }
-    .cal-day-active {
-        background-color: #FFFDE7;
-        border: 2px solid #FBC02D;
-        border-radius: 10px;
-        padding: 8px 4px;
-        text-align: center;
-        min-height: 70px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-    }
-    .cal-day-empty {
-        background-color: transparent;
-        border: none;
-        min-height: 70px;
-    }
-
     /* ESTILOS CATÁLOGO DE PRODUCTOS */
     .product-card {
         background-color: #FFFFFF;
@@ -1110,7 +1066,7 @@ elif menu == "📦 Productos e Inventario":
                         st.error(f"❌ Error al eliminar: {e}")
 
 # ---------------------------------------------------------
-# ALMANAQUE DE VENTAS (REDISEÑADO)
+# ALMANAQUE DE VENTAS (NATIVO STREAMLIT)
 # ---------------------------------------------------------
 elif menu == "📅 Almanaque de Ventas":
     col_header, col_home = st.columns([3, 1])
@@ -1138,54 +1094,41 @@ elif menu == "📅 Almanaque de Ventas":
         df_ventas_mes['dia'] = pd.to_datetime(df_ventas_mes['fecha']).dt.day
         ventas_por_dia = df_ventas_mes.groupby('dia')['ingreso'].sum().to_dict()
 
-    st.markdown('<div class="sub-header-yellow">🗓️ Vistas de Ventas del Mes</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header-yellow">🗓️ Calendario de Ventas del Mes</div>', unsafe_allow_html=True)
 
-    # Cabecera de los días de la semana
-    dias_semana_html = "".join([f'<div class="cal-header-day">{d}</div>' for d in ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]])
-    
+    # Cabecera Días de la Semana
+    dias_nom = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+    cols_hdr = st.columns(7)
+    for idx, d_n in enumerate(dias_nom):
+        cols_hdr[idx].markdown(f"**{d_n}**")
+
+    # Renderizado Nativo de la Matriz del Almanaque
     cal = calendar.monthcalendar(anio_sel, mes_sel)
-    dias_grid_html = ""
-    
     for semana in cal:
-        for dia in semana:
-            if dia == 0:
-                dias_grid_html += '<div class="cal-day-empty"></div>'
-            else:
-                monto_dia = ventas_por_dia.get(dia, 0.0)
-                if monto_dia > 0:
-                    dias_grid_html += f'''
-                        <div class="cal-day-active">
-                            <span style="font-weight: bold; font-size: 16px; color: #111;">{dia}</span>
-                            <span style="font-size: 13px; font-weight: bold; color: #00A86B;">${monto_dia:,.2f}</span>
-                        </div>
-                    '''
+        cols_sem = st.columns(7)
+        for idx_d, dia in enumerate(semana):
+            with cols_sem[idx_d]:
+                if dia == 0:
+                    st.write("")
                 else:
-                    dias_grid_html += f'''
-                        <div class="cal-day-card">
-                            <span style="font-weight: bold; font-size: 16px; color: #333;">{dia}</span>
-                            <span style="font-size: 12px; color: #BBB;">$0</span>
-                        </div>
-                    '''
-
-    html_almanaque = f'''
-        <div class="cal-grid">
-            {dias_semana_html}
-            {dias_grid_html}
-        </div>
-    '''
-    st.markdown(html_almanaque, unsafe_allow_html=True)
+                    monto_dia = ventas_por_dia.get(dia, 0.0)
+                    if monto_dia > 0:
+                        st.markdown(f"**{dia}**")
+                        st.caption(f"🟢 ${monto_dia:,.2f}")
+                    else:
+                        st.markdown(f"**{dia}**")
+                        st.caption("$0")
 
     st.divider()
 
-    # DESPLIEGUE DE OPERACIONES POR DÍA
-    st.markdown('<div class="sub-header-yellow">🔍 Consultar Operaciones de un Día</div>', unsafe_allow_html=True)
+    # DESPLIEGUE Y CONSULTA DE OPERACIONES DE UN DÍA
+    st.markdown('<div class="sub-header-yellow">🔍 Consultar Operaciones de un Día Especifico</div>', unsafe_allow_html=True)
     
     num_dias_mes = calendar.monthrange(anio_sel, mes_sel)[1]
     opciones_dias = list(range(1, num_dias_mes + 1))
     
-    # Pre-seleccionar el día de hoy si está en el mes actual
     dia_defecto = date.today().day if (date.today().month == mes_sel and date.today().year == anio_sel) else 1
-    dia_elegido = st.selectbox("📅 Selecciona un día para ver operaciones:", opciones_dias, index=dia_defecto - 1)
+    dia_elegido = st.selectbox("📅 Selecciona el día a consultar:", opciones_dias, index=dia_defecto - 1)
 
     fecha_consulta_str = f"{anio_sel}-{mes_sel:02d}-{dia_elegido:02d}"
 
@@ -1205,10 +1148,10 @@ elif menu == "📅 Almanaque de Ventas":
         ganancia_dia_tot = float(df_ventas_dia['ganancia_total'].sum())
 
         c_met1, c_met2 = st.columns(2)
-        c_met1.metric(f"Total Vendido el {dia_elegido} de {mes_sel_nombre}", f"${monto_dia_tot:,.2f}", f"Bs. {monto_dia_tot * tasa_oficial:,.2f}")
-        c_met2.metric("Ganancia Total del Día", f"${ganancia_dia_tot:,.2f}")
+        c_met1.metric(f"Total Vendido ({dia_elegido} {mes_sel_nombre})", f"${monto_dia_tot:,.2f}", f"Bs. {monto_dia_tot * tasa_oficial:,.2f}")
+        c_met2.metric("Ganancia Neta del Día", f"${ganancia_dia_tot:,.2f}")
 
-        st.caption(f"📋 Operaciones registradas el **{dia_elegido}/{mes_sel:02d}/{anio_sel}**:")
+        st.caption(f"📋 Detalle de ventas registradas el **{dia_elegido}/{mes_sel:02d}/{anio_sel}**:")
         
         df_display_dia = df_ventas_dia[['id', 'Cliente', 'Producto', 'cantidad', 'precio_unitario', 'Monto Total ($)', 'ganancia_total', 'fecha']].copy()
         df_display_dia.rename(columns={
