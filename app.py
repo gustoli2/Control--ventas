@@ -184,6 +184,10 @@ st.markdown("""
     }
 
     /* ESTILOS TABLA ALMANAQUE TIPO GOOGLE CALENDAR */
+    .calendar-container {
+        width: 100%;
+        overflow-x: auto;
+    }
     .calendar-table {
         width: 100%;
         border-collapse: collapse;
@@ -192,24 +196,25 @@ st.markdown("""
         overflow: hidden;
         box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.04);
         margin-bottom: 20px;
+        table-layout: fixed;
     }
     .calendar-table th {
         background-color: #FFDE59;
         color: #111111;
         text-align: center;
-        padding: 10px;
-        font-size: 16px !important;
+        padding: 8px 2px;
+        font-size: 14px !important;
         font-weight: bold;
         border: 1px solid #E0E0E0;
     }
     .calendar-table td {
         width: 14.28%;
-        height: 80px;
+        height: 65px;
         vertical-align: top;
-        padding: 6px;
+        padding: 4px;
         border: 1px solid #E0E0E0;
         background-color: #FFFFFF;
-        text-align: left;
+        text-align: center;
     }
     .calendar-table td.empty-day {
         background-color: #FAFAFA;
@@ -220,19 +225,20 @@ st.markdown("""
     }
     .day-number {
         font-weight: bold;
-        font-size: 15px !important;
+        font-size: 14px !important;
         color: #222;
         display: block;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
     }
     .day-amount {
-        font-size: 12px !important;
+        font-size: 11px !important;
         font-weight: bold;
         color: #00A86B;
         background-color: #E8F5E9;
-        padding: 2px 4px;
+        padding: 2px 3px;
         border-radius: 4px;
-        display: inline-block;
+        display: block;
+        word-break: break-all;
     }
 
     /* ESTILOS CATÁLOGO DE PRODUCTOS */
@@ -1148,34 +1154,24 @@ elif menu == "📅 Almanaque de Ventas":
 
     st.markdown('<div class="sub-header-yellow">🗓️ Calendario de Ventas del Mes</div>', unsafe_allow_html=True)
 
-    # Construcción de la tabla de almanaque tipo Google Calendar
+    # CONSTRUCCIÓN DE LA TABLA HTML EN UNA CADENA LIMPIA Y CONTINUA
     cal = calendar.monthcalendar(anio_sel, mes_sel)
     
-    table_html = '<table class="calendar-table">'
-    table_html += '<tr><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th>Sáb</th><th>Dom</th></tr>'
-    
+    rows_html = []
     for semana in cal:
-        table_html += '<tr>'
+        tds = []
         for dia in semana:
             if dia == 0:
-                table_html += '<td class="empty-day"></td>'
+                tds.append('<td class="empty-day"></td>')
             else:
                 monto_dia = ventas_por_dia.get(dia, 0.0)
                 if monto_dia > 0:
-                    table_html += f'''
-                        <td class="active-day">
-                            <span class="day-number">{dia}</span>
-                            <span class="day-amount">${monto_dia:,.2f}</span>
-                        </td>
-                    '''
+                    tds.append(f'<td class="active-day"><span class="day-number">{dia}</span><span class="day-amount">${monto_dia:,.2f}</span></td>')
                 else:
-                    table_html += f'''
-                        <td>
-                            <span class="day-number" style="color: #666;">{dia}</span>
-                        </td>
-                    '''
-        table_html += '</tr>'
-    table_html += '</table>'
+                    tds.append(f'<td><span class="day-number" style="color: #666;">{dia}</span></td>')
+        rows_html.append(f'<tr>{"".join(tds)}</tr>')
+
+    table_html = f'<div class="calendar-container"><table class="calendar-table"><thead><tr><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th>Sáb</th><th>Dom</th></tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>'
 
     st.markdown(table_html, unsafe_allow_html=True)
 
