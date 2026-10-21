@@ -45,7 +45,6 @@ def init_supabase() -> Client:
 supabase = init_supabase()
 
 def inicializar_db():
-    # Asegurar cliente mostrador id = 1
     try:
         res = supabase.table("clientes").select("id").eq("id", 1).execute()
         if not res.data:
@@ -97,7 +96,6 @@ def archivo_a_base64(uploaded_file):
     return ""
 
 def limpiar_float(valor, por_defecto=0.0):
-    """Convierte de forma segura cualquier valor numérico/NaN a float."""
     try:
         if pd.isna(valor) or valor is None:
             return float(por_defecto)
@@ -412,7 +410,6 @@ if menu == "🏠 Inicio / Dashboard":
 
     st.divider()
 
-    # Estadísticas Mes
     mes_actual_str = date.today().strftime("%Y-%m")
     res_mes = supabase.table("ventas").select("ganancia_total, cantidad, productos(nombre)").like("fecha", f"{mes_actual_str}%").execute()
     df_ventas_mes = pd.DataFrame(res_mes.data)
@@ -608,7 +605,6 @@ elif menu == "🛒 Registrar Venta":
                                     "fecha": str(fecha_final_str)
                                 }).execute()
                                 
-                                # Actualizar Stock
                                 p_id_curr = item['producto_id']
                                 stock_actual = int(limpiar_float(df_prods[df_prods['id'] == p_id_curr]['stock'].values[0]))
                                 nuevo_stock = max(0, stock_actual - int(item['cantidad']))
@@ -816,7 +812,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             cliente_sel_str = st.selectbox("Selecciona el Cliente", list(opciones_deudores.keys()))
             cliente_info = opciones_deudores[cliente_sel_str]
             cliente_id_sel = int(cliente_info['cliente_id'])
-            deuda_maxima = float(cliente_info['Saldo Pendiente ($)'])
+            deuda_maxima = limpiar_float(cliente_info['Saldo Pendiente ($)'])
             deuda_maxima_bs = deuda_maxima * tasa_oficial
 
             tel_bruto = str(cliente_info['Teléfono']).replace(" ", "").replace("-", "").replace("+", "")
@@ -853,29 +849,32 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 </a>
             ''', unsafe_allow_html=True)
 
-            col_ab1, col_ab2 = st.columns(2)
-            with col_ab1:
-                monto_abono = st.number_input("Monto a Abonar ($)", min_value=0.01, max_value=deuda_maxima, value=deuda_maxima, step=0.5)
-            with col_ab2:
-                btn_abonar = st.button("💰 Registrar Abono", type="primary", use_container_width=True)
+            if deuda_maxima <= 0:
+                st.success(f"🎉 ¡El cliente {m_nombre} ya no tiene deudas pendientes!")
+            else:
+                col_ab1, col_ab2 = st.columns(2)
+                with col_ab1:
+                    monto_abono = st.number_input("Monto a Abonar ($)", min_value=0.01, max_value=deuda_maxima, value=deuda_maxima, step=0.5)
+                with col_ab2:
+                    btn_abonar = st.button("💰 Registrar Abono", type="primary", use_container_width=True)
 
-            if btn_abonar:
-                res_pend = supabase.table("ventas").select("id, saldo_pendiente").eq("cliente_id", cliente_id_sel).eq("estado_pago", "Pendiente").gt("saldo_pendiente", 0).order("fecha").execute()
-                abono_rest = float(monto_abono)
+                if btn_abonar:
+                    res_pend = supabase.table("ventas").select("id, saldo_pendiente").eq("cliente_id", cliente_id_sel).eq("estado_pago", "Pendiente").gt("saldo_pendiente", 0).order("fecha").execute()
+                    abono_rest = float(monto_abono)
 
-                for v_item in res_pend.data:
-                    if abono_rest <= 0: break
-                    s_pend = float(limpiar_float(v_item['saldo_pendiente']))
-                    if abono_rest >= s_pend:
-                        abono_rest -= s_pend
-                        supabase.table("ventas").update({"saldo_pendiente": 0.0, "estado_pago": "Pagado"}).eq("id", int(v_item['id'])).execute()
-                    else:
-                        nuevo_s = s_pend - abono_rest
-                        supabase.table("ventas").update({"saldo_pendiente": float(nuevo_s)}).eq("id", int(v_item['id'])).execute()
-                        abono_rest = 0.0
+                    for v_item in res_pend.data:
+                        if abono_rest <= 0: break
+                        s_pend = float(limpiar_float(v_item['saldo_pendiente']))
+                        if abono_rest >= s_pend:
+                            abono_rest -= s_pend
+                            supabase.table("ventas").update({"saldo_pendiente": 0.0, "estado_pago": "Pagado"}).eq("id", int(v_item['id'])).execute()
+                        else:
+                            nuevo_s = s_pend - abono_rest
+                            supabase.table("ventas").update({"saldo_pendiente": float(nuevo_s)}).eq("id", int(v_item['id'])).execute()
+                            abono_rest = 0.0
 
-                st.success(f"🎉 Abono de ${monto_abono:,.2f} registrado exitosamente.")
-                st.rerun()
+                    st.success(f"🎉 Abono de ${monto_abono:,.2f} registrado exitosamente.")
+                    st.rerun()
 
             with st.expander("🗑️ Borrar un Registro de Deuda Específico (En caso de error)"):
                 st.caption("Selecciona una venta a crédito para eliminarla y reponer el stock correspondiente.")
@@ -1182,7 +1181,6 @@ elif menu == "📅 Almanaque de Ventas":
 
     st.markdown('<div class="sub-header-yellow">🗓️ Calendario de Ventas del Mes</div>', unsafe_allow_html=True)
 
-    # CONSTRUCCIÓN DE LA TABLA HTML EN UNA CADENA LIMPIA Y CONTINUA
     cal = calendar.monthcalendar(anio_sel, mes_sel)
     
     rows_html = []
@@ -1205,7 +1203,6 @@ elif menu == "📅 Almanaque de Ventas":
 
     st.divider()
 
-    # DESPLIEGUE Y CONSULTA DE OPERACIONES DE UN DÍA
     st.markdown('<div class="sub-header-yellow">🔍 Consultar Operaciones de un Día Específico</div>', unsafe_allow_html=True)
     
     num_dias_mes = calendar.monthrange(anio_sel, mes_sel)[1]
