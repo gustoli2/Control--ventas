@@ -96,6 +96,15 @@ def archivo_a_base64(uploaded_file):
         return f"data:{mime_type};base64,{base64_str}"
     return ""
 
+def limpiar_float(valor, por_defecto=0.0):
+    """Convierte de forma segura cualquier valor numérico/NaN a float."""
+    try:
+        if pd.isna(valor) or valor is None:
+            return float(por_defecto)
+        return float(valor)
+    except (ValueError, TypeError):
+        return float(por_defecto)
+
 # --- ESTILOS CSS ---
 st.markdown("""
 <style>
@@ -506,16 +515,20 @@ elif menu == "🛒 Registrar Venta":
         if df_prods_disponibles.empty:
             st.error("❌ No se encontraron productos con stock disponible.")
         else:
-            opciones_productos = {f"{row['nombre']} (Stock: {row['stock']})": row for _, row in df_prods_disponibles.iterrows()}
+            opciones_productos = {f"{row['nombre']} (Stock: {int(limpiar_float(row['stock']))})": row for _, row in df_prods_disponibles.iterrows()}
             prod_seleccionado_str = st.selectbox("Selecciona un Producto", list(opciones_productos.keys()), key="sb_prod_rv")
             prod_data = opciones_productos[prod_seleccionado_str]
 
+            c_unit = limpiar_float(prod_data.get('costo_unitario', 0.0))
+            p_vent = limpiar_float(prod_data.get('precio_venta', 0.0))
+            s_act = int(limpiar_float(prod_data.get('stock', 0)))
+
             cantidad_ya_en_carrito = sum(item['cantidad'] for item in st.session_state['carrito_ventas'] if item['producto_id'] == prod_data['id'])
-            stock_restringido = int(prod_data['stock']) - cantidad_ya_en_carrito
+            stock_restringido = s_act - cantidad_ya_en_carrito
 
             col_p1, col_p2, col_p3 = st.columns([2, 1, 1])
             with col_p1:
-                st.info(f"**Precio:** ${prod_data['precio_venta']:.2f} (~ Bs. {prod_data['precio_venta']*tasa_oficial:,.2f}) | **Costo:** ${prod_data['costo_unitario']:.2f}")
+                st.info(f"**Precio:** ${p_vent:.2f} (~ Bs. {p_vent*tasa_oficial:,.2f}) | **Costo:** ${c_unit:.2f}")
             with col_p2:
                 if stock_restringido > 0:
                     cant_a_agregar = st.number_input("Cantidad", min_value=1, max_value=stock_restringido, value=1, step=1)
@@ -528,13 +541,13 @@ elif menu == "🛒 Registrar Venta":
                 if stock_restringido > 0:
                     if st.button("➕ Agregar al Carrito", type="secondary", use_container_width=True):
                         st.session_state['carrito_ventas'].append({
-                            'producto_id': prod_data['id'],
-                            'nombre': prod_data['nombre'],
+                            'producto_id': int(prod_data['id']),
+                            'nombre': str(prod_data['nombre']),
                             'cantidad': int(cant_a_agregar),
-                            'precio_unitario': float(prod_data['precio_venta']),
-                            'costo_unitario': float(prod_data['costo_unitario']),
-                            'subtotal': float(prod_data['precio_venta']) * int(cant_a_agregar),
-                            'ganancia': (float(prod_data['precio_venta']) - float(prod_data['costo_unitario'])) * int(cant_a_agregar)
+                            'precio_unitario': float(p_vent),
+                            'costo_unitario': float(c_unit),
+                            'subtotal': float(p_vent) * int(cant_a_agregar),
+                            'ganancia': (float(p_vent) - float(c_unit)) * int(cant_a_agregar)
                         })
                         st.rerun()
 
@@ -596,9 +609,10 @@ elif menu == "🛒 Registrar Venta":
                                 }).execute()
                                 
                                 # Actualizar Stock
-                                stock_actual = int(df_prods[df_prods['id'] == item['producto_id']]['stock'].values[0])
-                                nuevo_stock = stock_actual - int(item['cantidad'])
-                                supabase.table("productos").update({"stock": int(nuevo_stock)}).eq("id", int(item['producto_id'])).execute()
+                                p_id_curr = item['producto_id']
+                                stock_actual = int(limpiar_float(df_prods[df_prods['id'] == p_id_curr]['stock'].values[0]))
+                                nuevo_stock = max(0, stock_actual - int(item['cantidad']))
+                                supabase.table("productos").update({"stock": int(nuevo_stock)}).eq("id", int(p_id_curr)).execute()
 
                             st.session_state['carrito_ventas'] = []
                             st.balloons()
@@ -671,7 +685,7 @@ elif menu == "💰 Transacciones Pagadas":
                     try:
                         res_p_curr = supabase.table("productos").select("stock").eq("id", int(p_del_info['producto_id'])).execute()
                         if res_p_curr.data:
-                            stock_act = int(res_p_curr.data[0]['stock'])
+                            stock_act = int(limpiar_float(res_p_curr.data[0]['stock']))
                             supabase.table("productos").update({"stock": stock_act + int(p_del_info['cantidad'])}).eq("id", int(p_del_info['producto_id'])).execute()
 
                         supabase.table("ventas").delete().eq("id", int(p_del_info['id'])).execute()
@@ -851,7 +865,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
                 for v_item in res_pend.data:
                     if abono_rest <= 0: break
-                    s_pend = float(v_item['saldo_pendiente'])
+                    s_pend = float(limpiar_float(v_item['saldo_pendiente']))
                     if abono_rest >= s_pend:
                         abono_rest -= s_pend
                         supabase.table("ventas").update({"saldo_pendiente": 0.0, "estado_pago": "Pagado"}).eq("id", int(v_item['id'])).execute()
@@ -877,7 +891,7 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                     try:
                         res_p_curr = supabase.table("productos").select("stock").eq("id", int(v_del_info['producto_id'])).execute()
                         if res_p_curr.data:
-                            stock_actual = int(res_p_curr.data[0]['stock'])
+                            stock_actual = int(limpiar_float(res_p_curr.data[0]['stock']))
                             supabase.table("productos").update({"stock": stock_actual + int(v_del_info['cantidad'])}).eq("id", int(v_del_info['producto_id'])).execute()
                         
                         supabase.table("ventas").delete().eq("id", int(v_del_info['id'])).execute()
@@ -949,6 +963,10 @@ elif menu == "📦 Productos e Inventario":
         
         if not df_prods.empty:
             total_referencias = len(df_prods)
+            df_prods['costo_unitario'] = df_prods['costo_unitario'].apply(limpiar_float)
+            df_prods['precio_venta'] = df_prods['precio_venta'].apply(limpiar_float)
+            df_prods['stock'] = df_prods['stock'].apply(limpiar_float)
+
             df_prods['val_costo_tot'] = df_prods['costo_unitario'] * df_prods['stock']
             costo_total_inv = float(df_prods['val_costo_tot'].sum())
 
@@ -997,8 +1015,8 @@ elif menu == "📦 Productos e Inventario":
             else:
                 for _, p_row in df_filtered.iterrows():
                     p_name = p_row['nombre']
-                    p_stock = int(p_row['stock'])
-                    p_precio = float(p_row['precio_venta'])
+                    p_stock = int(limpiar_float(p_row['stock']))
+                    p_precio = limpiar_float(p_row['precio_venta'])
                     p_precio_bs = p_precio * tasa_oficial
                     p_img_url = p_row.get('imagen_url', '')
 
@@ -1009,7 +1027,7 @@ elif menu == "📦 Productos e Inventario":
                     else:
                         badge_html = f'<span class="badge-in-stock">Disponible: {p_stock} uds</span>'
 
-                    if p_img_url and str(p_img_url).strip() != "":
+                    if p_img_url and not pd.isna(p_img_url) and str(p_img_url).strip() != "":
                         icon_html = f'<img src="{p_img_url}">'
                     else:
                         icon_html = '🥜'
@@ -1038,9 +1056,9 @@ elif menu == "📦 Productos e Inventario":
         with st.form("form_producto"):
             nombre = st.text_input("Nombre del Producto")
             col1, col2, col3 = st.columns(3)
-            with col1: costo = st.number_input("Costo Unitario ($)", min_value=0.0, format="%.2f")
-            with col2: precio = st.number_input("Precio de Venta ($)", min_value=0.0, format="%.2f")
-            with col3: stock = st.number_input("Stock Inicial", min_value=0, step=1)
+            with col1: costo = st.number_input("Costo Unitario ($)", min_value=0.0, value=0.0, format="%.2f")
+            with col2: precio = st.number_input("Precio de Venta ($)", min_value=0.0, value=0.0, format="%.2f")
+            with col3: stock = st.number_input("Stock Inicial", min_value=0, value=0, step=1)
 
             if st.form_submit_button("Guardar Producto"):
                 if nombre.strip() != "":
@@ -1053,10 +1071,10 @@ elif menu == "📦 Productos e Inventario":
 
                         nuevo_producto = {
                             "nombre": str(nombre.strip()),
-                            "costo_unitario": float(costo),
-                            "precio_venta": float(precio),
-                            "stock": int(stock),
-                            "imagen_url": final_img_str
+                            "costo_unitario": float(limpiar_float(costo)),
+                            "precio_venta": float(limpiar_float(precio)),
+                            "stock": int(limpiar_float(stock)),
+                            "imagen_url": str(final_img_str)
                         }
                         supabase.table("productos").insert(nuevo_producto).execute()
                         st.success(f"✅ Producto '{nombre}' agregado exitosamente.")
@@ -1075,20 +1093,26 @@ elif menu == "📦 Productos e Inventario":
             prod_edit_str = st.selectbox("Selecciona el producto", list(dict_prods.keys()))
             prod_sel = dict_prods[prod_edit_str]
 
-            img_actual = prod_sel.get('imagen_url', '')
-            if img_actual and str(img_actual).strip() != "":
+            img_actual_val = prod_sel.get('imagen_url', '')
+            img_actual = str(img_actual_val) if not pd.isna(img_actual_val) and img_actual_val is not None else ""
+
+            if img_actual and img_actual.strip() != "":
                 st.caption("📷 Vista previa de la foto actual:")
                 st.markdown(f'<div style="width: 100px; height: 100px; border-radius: 12px; overflow: hidden;"><img src="{img_actual}" style="width: 100%; height: 100%; object-fit: cover;"></div>', unsafe_allow_html=True)
 
             uploaded_img_edit = st.file_uploader("📷 Subir/Cambiar Fotografía del Producto", type=["png", "jpg", "jpeg"], key="up_img_edit")
-            n_imagen_url = st.text_input("🔗 O cambiar URL de la Imagen", value=img_actual if not str(img_actual).startswith("data:image") else "", key="txt_img_edit")
+            n_imagen_url = st.text_input("🔗 O cambiar URL de la Imagen", value=img_actual if not img_actual.startswith("data:image") else "", key="txt_img_edit")
+
+            val_costo = limpiar_float(prod_sel.get('costo_unitario', 0.0))
+            val_precio = limpiar_float(prod_sel.get('precio_venta', 0.0))
+            val_stock = int(limpiar_float(prod_sel.get('stock', 0)))
 
             with st.form("form_editar"):
-                n_nombre = st.text_input("Nombre", value=prod_sel['nombre'])
+                n_nombre = st.text_input("Nombre", value=str(prod_sel['nombre']))
                 c1, c2, c3 = st.columns(3)
-                with c1: n_costo = st.number_input("Costo ($)", min_value=0.0, value=float(prod_sel['costo_unitario']), format="%.2f")
-                with c2: n_precio = st.number_input("Precio ($)", min_value=0.0, value=float(prod_sel['precio_venta']), format="%.2f")
-                with c3: n_stock = st.number_input("Stock", min_value=0, value=int(prod_sel['stock']), step=1)
+                with c1: n_costo = st.number_input("Costo ($)", min_value=0.0, value=val_costo, format="%.2f")
+                with c2: n_precio = st.number_input("Precio ($)", min_value=0.0, value=val_precio, format="%.2f")
+                with c3: n_stock = st.number_input("Stock", min_value=0, value=val_stock, step=1)
 
                 col_b1, col_b2 = st.columns(2)
                 with col_b1: act = st.form_submit_button("💾 Actualizar", type="primary")
@@ -1105,10 +1129,10 @@ elif menu == "📦 Productos e Inventario":
 
                         supabase.table("productos").update({
                             "nombre": str(n_nombre.strip()),
-                            "costo_unitario": float(n_costo),
-                            "precio_venta": float(n_precio),
-                            "stock": int(n_stock),
-                            "imagen_url": final_img_str
+                            "costo_unitario": float(limpiar_float(n_costo)),
+                            "precio_venta": float(limpiar_float(n_precio)),
+                            "stock": int(limpiar_float(n_stock)),
+                            "imagen_url": str(final_img_str)
                         }).eq("id", int(prod_sel['id'])).execute()
                         st.success("✅ Producto actualizado.")
                         st.rerun()
@@ -1148,6 +1172,10 @@ elif menu == "📅 Almanaque de Ventas":
 
     ventas_por_dia = {}
     if not df_ventas_mes.empty:
+        df_ventas_mes['cantidad'] = df_ventas_mes['cantidad'].apply(limpiar_float)
+        df_ventas_mes['precio_unitario'] = df_ventas_mes['precio_unitario'].apply(limpiar_float)
+        df_ventas_mes['ganancia_total'] = df_ventas_mes['ganancia_total'].apply(limpiar_float)
+        
         df_ventas_mes['ingreso'] = df_ventas_mes['cantidad'] * df_ventas_mes['precio_unitario']
         df_ventas_mes['dia'] = pd.to_datetime(df_ventas_mes['fecha']).dt.day
         ventas_por_dia = df_ventas_mes.groupby('dia')['ingreso'].sum().to_dict()
@@ -1246,6 +1274,10 @@ elif menu == "📈 Reportes y Métricas":
     df_ventas = pd.DataFrame(res_v.data)
 
     if not df_ventas.empty:
+        df_ventas['cantidad'] = df_ventas['cantidad'].apply(limpiar_float)
+        df_ventas['precio_unitario'] = df_ventas['precio_unitario'].apply(limpiar_float)
+        df_ventas['ganancia_total'] = df_ventas['ganancia_total'].apply(limpiar_float)
+        
         df_ventas['Producto'] = df_ventas['productos'].apply(lambda x: x['nombre'] if isinstance(x, dict) else '')
         df_ventas['Cliente'] = df_ventas['clientes'].apply(lambda x: x['nombre'] if isinstance(x, dict) else '')
         df_ventas['Ingreso Total ($)'] = df_ventas['cantidad'] * df_ventas['precio_unitario']
