@@ -26,6 +26,9 @@ if 'subseccion_clientes' not in st.session_state:
 if 'subseccion_inventario' not in st.session_state:
     st.session_state['subseccion_inventario'] = "📋 Listado de Productos"
 
+if 'subseccion_gastos' not in st.session_state:
+    st.session_state['subseccion_gastos'] = "📋 Registrar / Ver Gastos"
+
 if 'filtro_inv' not in st.session_state:
     st.session_state['filtro_inv'] = "Todas"
 
@@ -46,9 +49,13 @@ supabase = init_supabase()
 
 def inicializar_db():
     try:
-        res = supabase.table("clientes").select("id").eq("id", 1).execute()
-        if not res.data:
+        res_c = supabase.table("clientes").select("id").eq("id", 1).execute()
+        if not res_c.data:
             supabase.table("clientes").insert({"id": 1, "nombre": "Cliente Mostrador / General", "telefono": "S/N"}).execute()
+        
+        res_p = supabase.table("proveedores").select("id").eq("id", 1).execute()
+        if not res_p.data:
+            supabase.table("proveedores").insert({"id": 1, "nombre": "Proveedor General / Varios", "telefono": "S/N"}).execute()
     except Exception:
         pass
 
@@ -86,6 +93,9 @@ def ir_a_subseccion_clientes(nombre_subseccion):
 
 def ir_a_subseccion_inventario(nombre_subseccion):
     st.session_state['subseccion_inventario'] = nombre_subseccion
+
+def ir_a_subseccion_gastos(nombre_subseccion):
+    st.session_state['subseccion_gastos'] = nombre_subseccion
 
 def archivo_a_base64(uploaded_file):
     if uploaded_file is not None:
@@ -190,7 +200,7 @@ st.markdown("""
         border: 1px solid #EEEEEE;
     }
 
-    /* ESTILOS TABLA ALMANAQUE TIPO GOOGLE CALENDAR */
+    /* ESTILOS TABLA ALMANAQUE */
     .calendar-container {
         width: 100%;
         overflow-x: auto;
@@ -342,6 +352,7 @@ opciones_menu = [
     "💰 Transacciones Pagadas",
     "👥 Clientes y Cuentas por Cobrar", 
     "📦 Productos e Inventario", 
+    "💸 Gastos y Proveedores",
     "📅 Almanaque de Ventas",
     "📈 Reportes y Métricas"
 ]
@@ -365,17 +376,22 @@ if menu == "🏠 Inicio / Dashboard":
     
     res_v_hoy = supabase.table("ventas").select("cantidad, precio_unitario, costo_unitario, ganancia_total").like("fecha", f"{fecha_hoy_str}%").execute()
     df_ventas_hoy = pd.DataFrame(res_v_hoy.data)
+
+    res_g_hoy = supabase.table("gastos").select("monto_usd").like("fecha", f"{fecha_hoy_str}%").execute()
+    df_gastos_hoy = pd.DataFrame(res_g_hoy.data)
     
     if not df_ventas_hoy.empty:
         df_ventas_hoy['ingreso'] = df_ventas_hoy['cantidad'] * df_ventas_hoy['precio_unitario']
         df_ventas_hoy['costo'] = df_ventas_hoy['cantidad'] * df_ventas_hoy['costo_unitario']
         ventas_hoy = float(df_ventas_hoy['ingreso'].sum())
-        costos_hoy = float(df_ventas_hoy['costo'].sum())
+        costos_prod_hoy = float(df_ventas_hoy['costo'].sum())
     else:
         ventas_hoy = 0.0
-        costos_hoy = 0.0
-        
-    balance_hoy = ventas_hoy - costos_hoy
+        costos_prod_hoy = 0.0
+
+    gastos_directos_hoy = float(df_gastos_hoy['monto_usd'].apply(limpiar_float).sum()) if not df_gastos_hoy.empty else 0.0
+    costos_totales_hoy = costos_prod_hoy + gastos_directos_hoy
+    balance_hoy = ventas_hoy - costos_totales_hoy
 
     st.markdown(f"""
         <div class="business-card">
@@ -384,14 +400,14 @@ if menu == "🏠 Inicio / Dashboard":
             <div style="font-size: 15px; color: #555; margin-bottom: 15px;">Bs. {ventas_hoy * tasa_oficial:,.2f}</div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
                 <div>
-                    <span style="font-size: 14px; color: #666;">Balance</span><br>
+                    <span style="font-size: 14px; color: #666;">Balance Real</span><br>
                     <span class="amount-green">${balance_hoy:,.2f}</span><br>
                     <span style="font-size: 13px; color: #666;">Bs. {balance_hoy * tasa_oficial:,.2f}</span>
                 </div>
                 <div style="text-align: right;">
-                    <span style="font-size: 14px; color: #666;">Costos hoy</span><br>
-                    <span class="amount-red">${costos_hoy:,.2f}</span><br>
-                    <span style="font-size: 13px; color: #666;">Bs. {costos_hoy * tasa_oficial:,.2f}</span>
+                    <span style="font-size: 14px; color: #666;">Egresos/Costos hoy</span><br>
+                    <span class="amount-red">${costos_totales_hoy:,.2f}</span><br>
+                    <span style="font-size: 13px; color: #666;">Bs. {costos_totales_hoy * tasa_oficial:,.2f}</span>
                 </div>
             </div>
         </div>
@@ -403,8 +419,9 @@ if menu == "🏠 Inicio / Dashboard":
     with c1:
         st.button("📦  Inventario", key="btn_inv", use_container_width=True, on_click=ir_a_seccion, args=("📦 Productos e Inventario",))
     with c2:
-        st.button("👥  Gestión de Clientes", key="btn_deu", use_container_width=True, on_click=ir_a_seccion, args=("👥 Clientes y Cuentas por Cobrar",))
+        st.button("💸  Gastos y Materia Prima", key="btn_gas", use_container_width=True, on_click=ir_a_seccion, args=("💸 Gastos y Proveedores",))
 
+    st.button("👥  Gestión de Clientes", key="btn_deu", use_container_width=True, on_click=ir_a_seccion, args=("👥 Clientes y Cuentas por Cobrar",))
     st.button("💰  Transacciones Pagadas", key="btn_trans_pag", use_container_width=True, on_click=ir_a_seccion, args=("💰 Transacciones Pagadas",))
     st.button("📅  Almanaque de Ventas", key="btn_cal_home", use_container_width=True, on_click=ir_a_seccion, args=("📅 Almanaque de Ventas",))
 
@@ -431,7 +448,7 @@ if menu == "🏠 Inicio / Dashboard":
         
     with col_stat2:
         st.markdown('<div class="stat-card">', unsafe_allow_html=True)
-        st.caption("Ganancias del mes")
+        st.caption("Ganancias estimadas ventas mes")
         ganancias_mes = float(df_ventas_mes['ganancia_total'].sum()) if not df_ventas_mes.empty else 0.0
         st.subheader(f"💵 ${ganancias_mes:,.2f}")
         st.caption(f"Bs. {ganancias_mes * tasa_oficial:,.2f}")
@@ -915,27 +932,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             st.dataframe(df_tabla_deudores[['Cliente', 'Teléfono', 'Producto', 'Cantidad', 'Precio Unit. ($)', 'Saldo Pendiente ($)', 'Pendiente (Bs.)', 'Fecha de Compra']], use_container_width=True)
 
-            with st.expander("🔍 Ver detalle desplegable agrupado por cada cliente"):
-                for _, row_cli in df_deudas_resumen.iterrows():
-                    c_id = int(row_cli['cliente_id'])
-                    c_nom = row_cli['Cliente']
-                    c_tel = row_cli['Teléfono']
-                    c_monto = row_cli['Saldo Pendiente ($)']
-                    c_monto_bs = c_monto * tasa_oficial
-                    
-                    st.write(f"### 👤 {c_nom} (Pendiente: ${c_monto:,.2f} / Bs. {c_monto_bs:,.2f}) - Tel: {c_tel}")
-                    
-                    df_sub = df_deudas[df_deudas['cliente_id'] == c_id][['Producto', 'cantidad', 'precio_unitario', 'saldo_pendiente', 'fecha']].copy()
-                    df_sub['Saldo Pendiente (Bs.)'] = df_sub['saldo_pendiente'] * tasa_oficial
-                    df_sub.rename(columns={
-                        'cantidad': 'Cantidad',
-                        'precio_unitario': 'Precio Unit. ($)',
-                        'saldo_pendiente': 'Saldo Pendiente ($)',
-                        'fecha': 'Fecha de Compra'
-                    }, inplace=True)
-                    
-                    st.dataframe(df_sub, use_container_width=True)
-
 # ---------------------------------------------------------
 # PRODUCTOS E INVENTARIO
 # ---------------------------------------------------------
@@ -1147,6 +1143,145 @@ elif menu == "📦 Productos e Inventario":
                         st.error(f"❌ Error al eliminar: {e}")
 
 # ---------------------------------------------------------
+# GASTOS Y PROVEEDORES (NUEVA SECCIÓN)
+# ---------------------------------------------------------
+elif menu == "💸 Gastos y Proveedores":
+    col_header, col_home = st.columns([3, 1])
+    with col_header:
+        st.markdown('<div class="section-header-yellow">💸 Gastos y Materia Prima</div>', unsafe_allow_html=True)
+    with col_home:
+        st.button("🏠 Volver al Inicio", key="btn_home_g", on_click=ir_a_seccion, args=("🏠 Inicio / Dashboard",), use_container_width=True)
+
+    g_col1, g_col2 = st.columns(2)
+    with g_col1:
+        st.button("📋 Registrar / Ver Gastos", key="btn_gasto_list", use_container_width=True, on_click=ir_a_subseccion_gastos, args=("📋 Registrar / Ver Gastos",))
+    with g_col2:
+        st.button("🏭 Gestión de Proveedores", key="btn_prov_add", use_container_width=True, on_click=ir_a_subseccion_gastos, args=("🏭 Gestión de Proveedores",))
+
+    st.divider()
+    sub_gasto = st.session_state['subseccion_gastos']
+
+    if sub_gasto == "📋 Registrar / Ver Gastos":
+        st.markdown('<div class="sub-header-yellow">➕ Registrar Nuevo Gasto o Materia Prima</div>', unsafe_allow_html=True)
+        
+        res_prov = supabase.table("proveedores").select("*").order("nombre").execute()
+        df_provs = pd.DataFrame(res_prov.data)
+
+        dict_provs = {"➕ Agregar Nuevo Proveedor": None}
+        if not df_provs.empty:
+            for _, r in df_provs.iterrows():
+                dict_provs[f"{r['nombre']} ({r['telefono']})"] = r
+
+        with st.form("form_nuevo_gasto"):
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                prov_sel_str = st.selectbox("Selecciona Proveedor", list(dict_provs.keys()))
+                cat_gasto = st.selectbox("Categoría", ["🥜 Materia Prima (Maní, papas, etc.)", "📦 Empaques y Bolsas", "🧼 Insumos / Limpieza", "🚚 Transporte / Flete", "💡 Servicios / Varios"])
+            with col_g2:
+                fecha_gasto = st.date_input("Fecha del Gasto", value=date.today())
+                monto_gasto = st.number_input("Monto en USD ($)", min_value=0.01, value=10.0, step=1.0, format="%.2f")
+
+            desc_gasto = st.text_input("Descripción del Gasto / Compra", placeholder="Ej. Compra de 50 kg de maní en grano")
+            guardar_gasto = st.form_submit_button("💾 Registrar Gasto", type="primary")
+
+            if guardar_gasto:
+                if desc_gasto.strip() == "":
+                    st.error("Por favor coloca una pequeña descripción del gasto.")
+                else:
+                    prov_info = dict_provs[prov_sel_str]
+                    p_id_final = int(prov_info['id']) if prov_info is not None else 1
+
+                    fecha_g_final = fecha_gasto.strftime("%Y-%m-%d") + datetime.now().strftime(" %H:%M:%S")
+
+                    try:
+                        supabase.table("gastos").insert({
+                            "proveedor_id": p_id_final,
+                            "descripcion": str(desc_gasto.strip()),
+                            "categoria": str(cat_gasto),
+                            "monto_usd": float(monto_gasto),
+                            "fecha": str(fecha_g_final)
+                        }).execute()
+                        st.success(f"✅ Gasto de ${monto_gasto:,.2f} registrado con éxito.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al guardar el gasto: {e}")
+
+        st.divider()
+        st.markdown('<div class="sub-header-yellow">📋 Historial de Gastos Registrados</div>', unsafe_allow_html=True)
+        
+        res_gastos_all = supabase.table("gastos").select("id, descripcion, categoria, monto_usd, fecha, proveedores(nombre)").order("fecha", desc=True).execute()
+        df_gastos_all = pd.DataFrame(res_gastos_all.data)
+
+        if df_gastos_all.empty:
+            st.info("Aún no has registrado gastos de materia prima o insumos.")
+        else:
+            df_gastos_all['Proveedor'] = df_gastos_all['proveedores'].apply(lambda x: x['nombre'] if isinstance(x, dict) else 'Proveedor General')
+            df_gastos_all['Monto USD ($)'] = df_gastos_all['monto_usd'].apply(limpiar_float)
+            df_gastos_all['Monto Bs.'] = df_gastos_all['Monto USD ($)'] * tasa_oficial
+
+            total_gastos = df_gastos_all['Monto USD ($)'].sum()
+            st.metric("Total Egresos Registrados", f"${total_gastos:,.2f}", f"Bs. {total_gastos * tasa_oficial:,.2f}")
+
+            df_display_g = df_gastos_all[['id', 'descripcion', 'categoria', 'Proveedor', 'Monto USD ($)', 'Monto Bs.', 'fecha']].copy()
+            df_display_g.rename(columns={
+                'id': 'ID Gasto',
+                'descripcion': 'Descripción',
+                'categoria': 'Categoría',
+                'fecha': 'Fecha / Hora'
+            }, inplace=True)
+
+            st.dataframe(df_display_g, use_container_width=True)
+
+            with st.expander("🗑️ Eliminar un Registro de Gasto (En caso de error)"):
+                dict_gastos_del = {
+                    f"ID #{row['ID Gasto']} - {row['Descripción']} (${row['Monto USD ($)']:.2f})": row['ID Gasto']
+                    for _, row in df_display_g.iterrows()
+                }
+                g_del_sel = st.selectbox("Selecciona el gasto a eliminar", list(dict_gastos_del.keys()))
+                if st.button("🗑️ Eliminar Registro de Gasto", type="primary", use_container_width=True):
+                    try:
+                        id_g_del = dict_gastos_del[g_del_sel]
+                        supabase.table("gastos").delete().eq("id", int(id_g_del)).execute()
+                        st.warning(f"🗑️ Registro de gasto #{id_g_del} eliminado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al eliminar el gasto: {e}")
+
+    elif sub_gasto == "🏭 Gestión de Proveedores":
+        st.markdown('<div class="sub-header-yellow">🏭 Directorio de Proveedores</div>', unsafe_allow_html=True)
+
+        res_p = supabase.table("proveedores").select("*").order("nombre").execute()
+        df_provs_dir = pd.DataFrame(res_p.data)
+
+        if not df_provs_dir.empty:
+            st.dataframe(df_provs_dir[['id', 'nombre', 'contacto', 'telefono', 'notas']], use_container_width=True)
+
+        st.divider()
+        st.markdown('<div class="sub-header-yellow">➕ Registrar Nuevo Proveedor</div>', unsafe_allow_html=True)
+        with st.form("form_nuevo_proveedor"):
+            p_nombre = st.text_input("Nombre de la Empresa / Proveedor")
+            c1, c2 = st.columns(2)
+            with c1: p_contacto = st.text_input("Persona de Contacto")
+            with c2: p_telefono = st.text_input("Teléfono / WhatsApp")
+            p_notas = st.text_area("Notas / Productos que vende")
+
+            if st.form_submit_button("💾 Guardar Proveedor"):
+                if p_nombre.strip() != "":
+                    try:
+                        supabase.table("proveedores").insert({
+                            "nombre": str(p_nombre.strip()),
+                            "contacto": str(p_contacto.strip() if p_contacto else 'N/A'),
+                            "telefono": str(p_telefono.strip() if p_telefono else 'S/N'),
+                            "notas": str(p_notas.strip() if p_notas else '')
+                        }).execute()
+                        st.success(f"✅ Proveedor '{p_nombre}' guardado exitosamente.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al guardar proveedor: {e}")
+                else:
+                    st.error("El nombre del proveedor no puede estar vacío.")
+
+# ---------------------------------------------------------
 # ALMANAQUE DE VENTAS (TABLA TIPO GOOGLE CALENDAR)
 # ---------------------------------------------------------
 elif menu == "📅 Almanaque de Ventas":
@@ -1270,6 +1405,9 @@ elif menu == "📈 Reportes y Métricas":
     res_v = supabase.table("ventas").select("id, cantidad, precio_unitario, ganancia_total, estado_pago, fecha, productos(nombre), clientes(nombre)").order("id", desc=True).execute()
     df_ventas = pd.DataFrame(res_v.data)
 
+    res_g = supabase.table("gastos").select("monto_usd, fecha").order("id", desc=True).execute()
+    df_gastos_rep = pd.DataFrame(res_g.data)
+
     if not df_ventas.empty:
         df_ventas['cantidad'] = df_ventas['cantidad'].apply(limpiar_float)
         df_ventas['precio_unitario'] = df_ventas['precio_unitario'].apply(limpiar_float)
@@ -1280,18 +1418,22 @@ elif menu == "📈 Reportes y Métricas":
         df_ventas['Ingreso Total ($)'] = df_ventas['cantidad'] * df_ventas['precio_unitario']
         
         df_ventas_filtrado = df_ventas[df_ventas['fecha'].str.startswith(mes_filtro_str)].copy()
+        df_gastos_filtrado = df_gastos_rep[df_gastos_rep['fecha'].str.startswith(mes_filtro_str)].copy() if not df_gastos_rep.empty else pd.DataFrame()
 
-        if df_ventas_filtrado.empty:
-            st.warning(f"⚠️ No hay registros de transacciones para {mes_rep_nombre_sel} {anio_rep_sel}.")
-        else:
-            total_ingresos = float(df_ventas_filtrado['Ingreso Total ($)'].sum())
-            total_ganancias = float(df_ventas_filtrado['ganancia_total'].sum())
-            
-            col1, col2 = st.columns(2)
-            col1.metric(f"Ingresos Totales ({mes_rep_nombre_sel} {anio_rep_sel})", f"${total_ingresos:,.2f}", f"Bs. {total_ingresos * tasa_oficial:,.2f}")
-            col2.metric(f"Ganancia Neta Total ({mes_rep_nombre_sel} {anio_rep_sel})", f"${total_ganancias:,.2f}", f"Bs. {total_ganancias * tasa_oficial:,.2f}")
-            st.divider()
-            
+        total_ingresos = float(df_ventas_filtrado['Ingreso Total ($)'].sum()) if not df_ventas_filtrado.empty else 0.0
+        total_ganancias_ventas = float(df_ventas_filtrado['ganancia_total'].sum()) if not df_ventas_filtrado.empty else 0.0
+        total_gastos_mes = float(df_gastos_filtrado['monto_usd'].apply(limpiar_float).sum()) if not df_gastos_filtrado.empty else 0.0
+
+        balance_neto_mes = total_ganancias_ventas - total_gastos_mes
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Ingresos Ventas ($)", f"${total_ingresos:,.2f}", f"Bs. {total_ingresos * tasa_oficial:,.2f}")
+        col2.metric("Egresos / Gastos ($)", f"${total_gastos_mes:,.2f}", f"Bs. {total_gastos_mes * tasa_oficial:,.2f}")
+        col3.metric("Ganancia Neta Real ($)", f"${balance_neto_mes:,.2f}", f"Bs. {balance_neto_mes * tasa_oficial:,.2f}")
+        
+        st.divider()
+        
+        if not df_ventas_filtrado.empty:
             df_display_rep = df_ventas_filtrado[['id', 'Producto', 'Cliente', 'cantidad', 'precio_unitario', 'Ingreso Total ($)', 'ganancia_total', 'estado_pago', 'fecha']].copy()
             df_display_rep.rename(columns={
                 'id': 'ID Venta',
