@@ -52,7 +52,10 @@ def inicializar_db():
         res_c = supabase.table("clientes").select("id").eq("id", 1).execute()
         if not res_c.data:
             supabase.table("clientes").insert({"id": 1, "nombre": "Cliente Mostrador / General", "telefono": "S/N"}).execute()
-        
+    except Exception:
+        pass
+
+    try:
         res_p = supabase.table("proveedores").select("id").eq("id", 1).execute()
         if not res_p.data:
             supabase.table("proveedores").insert({"id": 1, "nombre": "Proveedor General / Varios", "telefono": "S/N"}).execute()
@@ -374,11 +377,19 @@ if menu == "🏠 Inicio / Dashboard":
     
     fecha_hoy_str = date.today().strftime("%Y-%m-%d")
     
-    res_v_hoy = supabase.table("ventas").select("cantidad, precio_unitario, costo_unitario, ganancia_total").like("fecha", f"{fecha_hoy_str}%").execute()
-    df_ventas_hoy = pd.DataFrame(res_v_hoy.data)
+    # Consultar ventas del día con control de errores
+    try:
+        res_v_hoy = supabase.table("ventas").select("cantidad, precio_unitario, costo_unitario, ganancia_total").like("fecha", f"{fecha_hoy_str}%").execute()
+        df_ventas_hoy = pd.DataFrame(res_v_hoy.data)
+    except Exception:
+        df_ventas_hoy = pd.DataFrame()
 
-    res_g_hoy = supabase.table("gastos").select("monto_usd").like("fecha", f"{fecha_hoy_str}%").execute()
-    df_gastos_hoy = pd.DataFrame(res_g_hoy.data)
+    # Consultar gastos del día de forma segura para evitar excepciones de API
+    try:
+        res_g_hoy = supabase.table("gastos").select("monto_usd").like("fecha", f"{fecha_hoy_str}%").execute()
+        df_gastos_hoy = pd.DataFrame(res_g_hoy.data)
+    except Exception:
+        df_gastos_hoy = pd.DataFrame()
     
     if not df_ventas_hoy.empty:
         df_ventas_hoy['ingreso'] = df_ventas_hoy['cantidad'] * df_ventas_hoy['precio_unitario']
@@ -428,8 +439,11 @@ if menu == "🏠 Inicio / Dashboard":
     st.divider()
 
     mes_actual_str = date.today().strftime("%Y-%m")
-    res_mes = supabase.table("ventas").select("ganancia_total, cantidad, productos(nombre)").like("fecha", f"{mes_actual_str}%").execute()
-    df_ventas_mes = pd.DataFrame(res_mes.data)
+    try:
+        res_mes = supabase.table("ventas").select("ganancia_total, cantidad, productos(nombre)").like("fecha", f"{mes_actual_str}%").execute()
+        df_ventas_mes = pd.DataFrame(res_mes.data)
+    except Exception:
+        df_ventas_mes = pd.DataFrame()
     
     col_stat1, col_stat2 = st.columns(2)
     with col_stat1:
@@ -1143,7 +1157,7 @@ elif menu == "📦 Productos e Inventario":
                         st.error(f"❌ Error al eliminar: {e}")
 
 # ---------------------------------------------------------
-# GASTOS Y PROVEEDORES (NUEVA SECCIÓN)
+# GASTOS Y PROVEEDORES
 # ---------------------------------------------------------
 elif menu == "💸 Gastos y Proveedores":
     col_header, col_home = st.columns([3, 1])
@@ -1164,8 +1178,11 @@ elif menu == "💸 Gastos y Proveedores":
     if sub_gasto == "📋 Registrar / Ver Gastos":
         st.markdown('<div class="sub-header-yellow">➕ Registrar Nuevo Gasto o Materia Prima</div>', unsafe_allow_html=True)
         
-        res_prov = supabase.table("proveedores").select("*").order("nombre").execute()
-        df_provs = pd.DataFrame(res_prov.data)
+        try:
+            res_prov = supabase.table("proveedores").select("*").order("nombre").execute()
+            df_provs = pd.DataFrame(res_prov.data)
+        except Exception:
+            df_provs = pd.DataFrame()
 
         dict_provs = {"➕ Agregar Nuevo Proveedor": None}
         if not df_provs.empty:
@@ -1209,8 +1226,11 @@ elif menu == "💸 Gastos y Proveedores":
         st.divider()
         st.markdown('<div class="sub-header-yellow">📋 Historial de Gastos Registrados</div>', unsafe_allow_html=True)
         
-        res_gastos_all = supabase.table("gastos").select("id, descripcion, categoria, monto_usd, fecha, proveedores(nombre)").order("fecha", desc=True).execute()
-        df_gastos_all = pd.DataFrame(res_gastos_all.data)
+        try:
+            res_gastos_all = supabase.table("gastos").select("id, descripcion, categoria, monto_usd, fecha, proveedores(nombre)").order("fecha", desc=True).execute()
+            df_gastos_all = pd.DataFrame(res_gastos_all.data)
+        except Exception:
+            df_gastos_all = pd.DataFrame()
 
         if df_gastos_all.empty:
             st.info("Aún no has registrado gastos de materia prima o insumos.")
@@ -1250,8 +1270,11 @@ elif menu == "💸 Gastos y Proveedores":
     elif sub_gasto == "🏭 Gestión de Proveedores":
         st.markdown('<div class="sub-header-yellow">🏭 Directorio de Proveedores</div>', unsafe_allow_html=True)
 
-        res_p = supabase.table("proveedores").select("*").order("nombre").execute()
-        df_provs_dir = pd.DataFrame(res_p.data)
+        try:
+            res_p = supabase.table("proveedores").select("*").order("nombre").execute()
+            df_provs_dir = pd.DataFrame(res_p.data)
+        except Exception:
+            df_provs_dir = pd.DataFrame()
 
         if not df_provs_dir.empty:
             st.dataframe(df_provs_dir[['id', 'nombre', 'contacto', 'telefono', 'notas']], use_container_width=True)
@@ -1282,7 +1305,7 @@ elif menu == "💸 Gastos y Proveedores":
                     st.error("El nombre del proveedor no puede estar vacío.")
 
 # ---------------------------------------------------------
-# ALMANAQUE DE VENTAS (TABLA TIPO GOOGLE CALENDAR)
+# ALMANAQUE DE VENTAS
 # ---------------------------------------------------------
 elif menu == "📅 Almanaque de Ventas":
     col_header, col_home = st.columns([3, 1])
@@ -1301,8 +1324,11 @@ elif menu == "📅 Almanaque de Ventas":
 
     mes_str = f"{anio_sel}-{mes_sel:02d}"
     
-    res_v = supabase.table("ventas").select("id, fecha, cantidad, precio_unitario, ganancia_total, clientes(nombre), productos(nombre)").like("fecha", f"{mes_str}%").execute()
-    df_ventas_mes = pd.DataFrame(res_v.data)
+    try:
+        res_v = supabase.table("ventas").select("id, fecha, cantidad, precio_unitario, ganancia_total, clientes(nombre), productos(nombre)").like("fecha", f"{mes_str}%").execute()
+        df_ventas_mes = pd.DataFrame(res_v.data)
+    except Exception:
+        df_ventas_mes = pd.DataFrame()
 
     ventas_por_dia = {}
     if not df_ventas_mes.empty:
@@ -1402,11 +1428,17 @@ elif menu == "📈 Reportes y Métricas":
 
     mes_filtro_str = f"{anio_rep_sel}-{mes_rep_sel:02d}"
 
-    res_v = supabase.table("ventas").select("id, cantidad, precio_unitario, ganancia_total, estado_pago, fecha, productos(nombre), clientes(nombre)").order("id", desc=True).execute()
-    df_ventas = pd.DataFrame(res_v.data)
+    try:
+        res_v = supabase.table("ventas").select("id, cantidad, precio_unitario, ganancia_total, estado_pago, fecha, productos(nombre), clientes(nombre)").order("id", desc=True).execute()
+        df_ventas = pd.DataFrame(res_v.data)
+    except Exception:
+        df_ventas = pd.DataFrame()
 
-    res_g = supabase.table("gastos").select("monto_usd, fecha").order("id", desc=True).execute()
-    df_gastos_rep = pd.DataFrame(res_g.data)
+    try:
+        res_g = supabase.table("gastos").select("monto_usd, fecha").order("id", desc=True).execute()
+        df_gastos_rep = pd.DataFrame(res_g.data)
+    except Exception:
+        df_gastos_rep = pd.DataFrame()
 
     if not df_ventas.empty:
         df_ventas['cantidad'] = df_ventas['cantidad'].apply(limpiar_float)
