@@ -377,14 +377,12 @@ if menu == "🏠 Inicio / Dashboard":
     
     fecha_hoy_str = date.today().strftime("%Y-%m-%d")
     
-    # Consultar ventas del día con control de errores
     try:
         res_v_hoy = supabase.table("ventas").select("cantidad, precio_unitario, costo_unitario, ganancia_total").like("fecha", f"{fecha_hoy_str}%").execute()
         df_ventas_hoy = pd.DataFrame(res_v_hoy.data)
     except Exception:
         df_ventas_hoy = pd.DataFrame()
 
-    # Consultar gastos del día de forma segura para evitar excepciones de API
     try:
         res_g_hoy = supabase.table("gastos").select("monto_usd").like("fecha", f"{fecha_hoy_str}%").execute()
         df_gastos_hoy = pd.DataFrame(res_g_hoy.data)
@@ -1291,6 +1289,7 @@ elif menu == "💸 Gastos y Proveedores":
             if st.form_submit_button("💾 Guardar Proveedor"):
                 if p_nombre.strip() != "":
                     try:
+                        # Se excluye el campo 'id' para permitir que Supabase asigne el autonumérico correctamente
                         supabase.table("proveedores").insert({
                             "nombre": str(p_nombre.strip()),
                             "contacto": str(p_contacto.strip() if p_contacto else 'N/A'),
