@@ -932,8 +932,8 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             st.divider()
             st.markdown('<div class="sub-header-yellow">📋 Registro General de Clientes Deudores (Detalle por Compra)</div>', unsafe_allow_html=True)
             
-            # 🔍 NUEVO BUSCADOR POR CLIENTE
-            busq_deudor = st.text_input("🔍 Filtrar por nombre de cliente...", placeholder="Escribe el nombre...")
+            # 🔍 BUSCADOR POR CLIENTE
+            busq_deudor = st.text_input("🔍 Filtrar por nombre de cliente...", placeholder="Escribe el nombre del cliente...")
             
             df_tabla_deudores = df_deudas[['Cliente', 'Teléfono', 'Producto', 'cantidad', 'precio_unitario', 'saldo_pendiente', 'fecha']].copy()
             df_tabla_deudores['Pendiente (Bs.)'] = df_tabla_deudores['saldo_pendiente'] * tasa_oficial
@@ -949,6 +949,39 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 df_tabla_deudores = df_tabla_deudores[df_tabla_deudores['Cliente'].str.contains(busq_deudor, case=False, na=False)]
 
             st.dataframe(df_tabla_deudores[['Cliente', 'Teléfono', 'Producto', 'Cantidad', 'Precio Unit. ($)', 'Saldo Pendiente ($)', 'Pendiente (Bs.)', 'Fecha de Compra']], use_container_width=True)
+
+            # 💰 TOTAL A PAGAR MOSTRADO DEBAJO DE LA TABLA
+            total_deuda_filtrada = df_tabla_deudores['Saldo Pendiente ($)'].sum() if not df_tabla_deudores.empty else 0.0
+            total_deuda_filtrada_bs = total_deuda_filtrada * tasa_oficial
+
+            if busq_deudor.strip() != "":
+                st.markdown(f"""
+                    <div style="
+                        background-color: #FFF3E0; 
+                        border: 2px solid #FB8C00; 
+                        border-radius: 12px; 
+                        padding: 16px; 
+                        margin-top: 15px; 
+                        text-align: center;">
+                        <span style="font-size: 18px; color: #E65100; font-weight: bold;">💰 Total a pagar cliente '{busq_deudor.strip()}':</span><br>
+                        <span style="font-size: 28px; font-weight: bold; color: #111111;">${total_deuda_filtrada:,.2f} USD</span><br>
+                        <span style="font-size: 16px; color: #555555; font-weight: bold;">(~ Bs. {total_deuda_filtrada_bs:,.2f})</span>
+                    </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                    <div style="
+                        background-color: #FFFFFF; 
+                        border: 1px solid #E0E0E0; 
+                        border-radius: 12px; 
+                        padding: 14px; 
+                        margin-top: 15px; 
+                        text-align: center;">
+                        <span style="font-size: 16px; color: #666666;">📊 Total General Deuda Acumulada Filtro Actual:</span>
+                        <span style="font-size: 22px; font-weight: bold; color: #111111; margin-left: 10px;">${total_deuda_filtrada:,.2f} USD</span> 
+                        <span style="font-size: 15px; color: #555555;">(Bs. {total_deuda_filtrada_bs:,.2f})</span>
+                    </div>
+                """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # PRODUCTOS E INVENTARIO
