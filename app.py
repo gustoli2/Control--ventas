@@ -344,8 +344,8 @@ st.markdown("""
 tasa_bcv_auto = obtener_tasa_bcv()
 
 # --- MENÚ LATERAL ---
-# Imagen del icono de maní arriba de la palabra OLINUTS
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3014/3014620.png", width=90)
+# Icono limpio de maní (peanut) arriba de la palabra OLINUTS
+st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3257/3257367.png", width=90)
 st.sidebar.title("OLINUTS")
 
 tasa_oficial = st.sidebar.number_input("💵 Tasa BCV Hoy (Bs/$)", min_value=1.0, value=tasa_bcv_auto, format="%.2f")
