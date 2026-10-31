@@ -719,7 +719,7 @@ elif menu == "💰 Transacciones Pagadas":
                     except Exception as e:
                         st.error(f"❌ Error al anular la transacción: {e}")
     else:
-        st.info("Aún no hay ventas or pagos registrados como completados.")
+        st.info("Aún no hay ventas o pagos registrados como completados.")
 
 # ---------------------------------------------------------
 # GESTIÓN DE CLIENTES Y CUENTAS POR COBRAR
@@ -757,24 +757,21 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
     elif submenu == "➕ Agregar Cliente":
         st.markdown('<div class="sub-header-yellow">➕ Agregar Nuevo Cliente</div>', unsafe_allow_html=True)
-        with st.form("form_cliente"):
-            nombre_cliente = st.text_input("Nombre Completo del Cliente")
-            telefono_cliente = st.text_input("Número de Teléfono / WhatsApp")
-            guardar_cliente = st.form_submit_button("Guardar Cliente")
-
-            if guardar_cliente:
-                if nombre_cliente.strip() != "":
-                    try:
-                        supabase.table("clientes").insert({
-                            "nombre": str(nombre_cliente.strip()), 
-                            "telefono": str(telefono_cliente.strip() if telefono_cliente.strip() else 'Sin teléfono')
-                        }).execute()
-                        st.success(f"✅ Cliente '{nombre_cliente}' agregado.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Error al guardar cliente: {e}")
-                else:
-                    st.error("El nombre no puede estar vacío.")
+        nombre_cliente = st.text_input("Nombre Completo del Cliente", key="inp_add_cli_n")
+        telefono_cliente = st.text_input("Número de Teléfono / WhatsApp", key="inp_add_cli_t")
+        if st.button("💾 Guardar Cliente", type="primary", use_container_width=True):
+            if nombre_cliente.strip() != "":
+                try:
+                    supabase.table("clientes").insert({
+                        "nombre": str(nombre_cliente.strip()), 
+                        "telefono": str(telefono_cliente.strip() if telefono_cliente.strip() else 'Sin teléfono')
+                    }).execute()
+                    st.success(f"✅ Cliente '{nombre_cliente}' agregado.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error al guardar cliente: {e}")
+            else:
+                st.error("El nombre no puede estar vacío.")
 
     elif submenu == "✏️ Editar / Eliminar":
         st.markdown('<div class="sub-header-yellow">✏️ Editar o Eliminar Cliente</div>', unsafe_allow_html=True)
@@ -786,14 +783,12 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             cli_edit_str = st.selectbox("Selecciona el cliente", list(dict_cli.keys()))
             cli_sel = dict_cli[cli_edit_str]
 
-            with st.form("form_editar_cliente_reg"):
-                n_nombre = st.text_input("Nombre", value=cli_sel['nombre'])
-                n_telefono = st.text_input("Teléfono", value=cli_sel['telefono'])
-                col_b1, col_b2 = st.columns(2)
-                with col_b1: act_cli = st.form_submit_button("💾 Actualizar", type="primary")
-                with col_b2: elim_cli = st.form_submit_button("🗑️ Eliminar")
-
-                if act_cli:
+            n_nombre = st.text_input("Nombre", value=cli_sel['nombre'], key="edit_cli_n")
+            n_telefono = st.text_input("Teléfono", value=cli_sel['telefono'], key="edit_cli_t")
+            
+            col_b1, col_b2 = st.columns(2)
+            with col_b1: 
+                if st.button("💾 Actualizar", type="primary", use_container_width=True):
                     try:
                         supabase.table("clientes").update({
                             "nombre": str(n_nombre.strip()), 
@@ -803,8 +798,8 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error al actualizar: {e}")
-
-                if elim_cli:
+            with col_b2: 
+                if st.button("🗑️ Eliminar", use_container_width=True):
                     if cli_sel['id'] == 1:
                         st.error("❌ No se puede eliminar el cliente general por defecto.")
                     else:
@@ -885,6 +880,8 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
                 with col_ab1:
                     monto_abono = st.number_input("Monto a Abonar ($)", min_value=0.01, max_value=deuda_maxima, value=deuda_maxima, step=0.5)
                 with col_ab2:
+                    st.write("")
+                    st.write("")
                     btn_abonar = st.button("💰 Registrar Abono", type="primary", use_container_width=True)
 
                 if btn_abonar:
@@ -1097,36 +1094,35 @@ elif menu == "📦 Productos e Inventario":
         uploaded_img = st.file_uploader("📷 Subir Fotografía del Producto (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"], key="up_img_new")
         imagen_url_txt = st.text_input("🔗 O pegar URL de la Imagen (Opcional)", placeholder="https://ejemplo.com/imagen.jpg", key="txt_img_new")
 
-        with st.form("form_producto"):
-            nombre = st.text_input("Nombre del Producto")
-            col1, col2, col3 = st.columns(3)
-            with col1: costo = st.number_input("Costo Unitario ($)", min_value=0.0, value=0.0, format="%.2f")
-            with col2: precio = st.number_input("Precio de Venta ($)", min_value=0.0, value=0.0, format="%.2f")
-            with col3: stock = st.number_input("Stock Inicial", min_value=0, value=0, step=1)
+        nombre = st.text_input("Nombre del Producto", key="add_p_nom")
+        col1, col2, col3 = st.columns(3)
+        with col1: costo = st.number_input("Costo Unitario ($)", min_value=0.0, value=0.0, format="%.2f", key="add_p_cos")
+        with col2: precio = st.number_input("Precio de Venta ($)", min_value=0.0, value=0.0, format="%.2f", key="add_p_pre")
+        with col3: stock = st.number_input("Stock Inicial", min_value=0, value=0, step=1, key="add_p_sto")
 
-            if st.form_submit_button("Guardar Producto"):
-                if nombre.strip() != "":
-                    try:
-                        final_img_str = ""
-                        if uploaded_img is not None:
-                            final_img_str = archivo_a_base64(uploaded_img)
-                        elif imagen_url_txt.strip() != "":
-                            final_img_str = str(imagen_url_txt.strip())
+        if st.button("Guardar Producto", type="primary", use_container_width=True):
+            if nombre.strip() != "":
+                try:
+                    final_img_str = ""
+                    if uploaded_img is not None:
+                        final_img_str = archivo_a_base64(uploaded_img)
+                    elif imagen_url_txt.strip() != "":
+                        final_img_str = str(imagen_url_txt.strip())
 
-                        nuevo_producto = {
-                            "nombre": str(nombre.strip()),
-                            "costo_unitario": float(limpiar_float(costo)),
-                            "precio_venta": float(limpiar_float(precio)),
-                            "stock": int(limpiar_float(stock)),
-                            "imagen_url": str(final_img_str)
-                        }
-                        supabase.table("productos").insert(nuevo_producto).execute()
-                        st.success(f"✅ Producto '{nombre}' agregado exitosamente.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Error al guardar en Supabase: {e}")
-                else:
-                    st.error("El nombre del producto no puede estar vacío.")
+                    nuevo_producto = {
+                        "nombre": str(nombre.strip()),
+                        "costo_unitario": float(limpiar_float(costo)),
+                        "precio_venta": float(limpiar_float(precio)),
+                        "stock": int(limpiar_float(stock)),
+                        "imagen_url": str(final_img_str)
+                    }
+                    supabase.table("productos").insert(nuevo_producto).execute()
+                    st.success(f"✅ Producto '{nombre}' agregado exitosamente.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error al guardar en Supabase: {e}")
+            else:
+                st.error("El nombre del producto no puede estar vacío.")
 
     elif sub_inv == "✏️ Editar / Eliminar":
         res_p = supabase.table("productos").select("*").order("nombre").execute()
@@ -1151,18 +1147,15 @@ elif menu == "📦 Productos e Inventario":
             val_precio = limpiar_float(prod_sel.get('precio_venta', 0.0))
             val_stock = int(limpiar_float(prod_sel.get('stock', 0)))
 
-            with st.form("form_editar"):
-                n_nombre = st.text_input("Nombre", value=str(prod_sel['nombre']))
-                c1, c2, c3 = st.columns(3)
-                with c1: n_costo = st.number_input("Costo ($)", min_value=0.0, value=val_costo, format="%.2f")
-                with c2: n_precio = st.number_input("Precio ($)", min_value=0.0, value=val_precio, format="%.2f")
-                with c3: n_stock = st.number_input("Stock", min_value=0, value=val_stock, step=1)
+            n_nombre = st.text_input("Nombre", value=str(prod_sel['nombre']), key="edit_p_n")
+            c1, c2, c3 = st.columns(3)
+            with c1: n_costo = st.number_input("Costo ($)", min_value=0.0, value=val_costo, format="%.2f", key="edit_p_c")
+            with c2: n_precio = st.number_input("Precio ($)", min_value=0.0, value=val_precio, format="%.2f", key="edit_p_p")
+            with c3: n_stock = st.number_input("Stock", min_value=0, value=val_stock, step=1, key="edit_p_s")
 
-                col_b1, col_b2 = st.columns(2)
-                with col_b1: act = st.form_submit_button("💾 Actualizar", type="primary")
-                with col_b2: elim = st.form_submit_button("🗑️ Eliminar")
-
-                if act:
+            col_b1, col_b2 = st.columns(2)
+            with col_b1: 
+                if st.button("💾 Actualizar", type="primary", use_container_width=True):
                     try:
                         if uploaded_img_edit is not None:
                             final_img_str = archivo_a_base64(uploaded_img_edit)
@@ -1182,8 +1175,8 @@ elif menu == "📦 Productos e Inventario":
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error al actualizar: {e}")
-
-                if elim:
+            with col_b2: 
+                if st.button("🗑️ Eliminar", use_container_width=True):
                     try:
                         supabase.table("productos").delete().eq("id", int(prod_sel['id'])).execute()
                         st.warning("🗑️ Producto eliminado.")
@@ -1224,39 +1217,37 @@ elif menu == "💸 Gastos y Proveedores":
             for _, r in df_provs.iterrows():
                 dict_provs[f"{r['nombre']} ({r['telefono']})"] = r
 
-        with st.form("form_nuevo_gasto"):
-            col_g1, col_g2 = st.columns(2)
-            with col_g1:
-                prov_sel_str = st.selectbox("Selecciona Proveedor", list(dict_provs.keys()))
-                cat_gasto = st.selectbox("Categoría", ["🥜 Materia Prima (Maní, papas, etc.)", "📦 Empaques y Bolsas", "🧼 Insumos / Limpieza", "🚚 Transporte / Flete", "💡 Servicios / Varios"])
-            with col_g2:
-                fecha_gasto = st.date_input("Fecha del Gasto", value=date.today())
-                monto_gasto = st.number_input("Monto en USD ($)", min_value=0.01, value=10.0, step=1.0, format="%.2f")
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            prov_sel_str = st.selectbox("Selecciona Proveedor", list(dict_provs.keys()), key="reg_g_prov")
+            cat_gasto = st.selectbox("Categoría", ["🥜 Materia Prima (Maní, papas, etc.)", "📦 Empaques y Bolsas", "🧼 Insumos / Limpieza", "🚚 Transporte / Flete", "💡 Servicios / Varios"], key="reg_g_cat")
+        with col_g2:
+            fecha_gasto = st.date_input("Fecha del Gasto", value=date.today(), key="reg_g_fec")
+            monto_gasto = st.number_input("Monto en USD ($)", min_value=0.01, value=10.0, step=1.0, format="%.2f", key="reg_g_mon")
 
-            desc_gasto = st.text_input("Descripción del Gasto / Compra", placeholder="Ej. Compra de 50 kg de maní en grano")
-            guardar_gasto = st.form_submit_button("💾 Registrar Gasto", type="primary")
+        desc_gasto = st.text_input("Descripción del Gasto / Compra", placeholder="Ej. Compra de 50 kg de maní en grano", key="reg_g_desc")
+        
+        if st.button("💾 Registrar Gasto", type="primary", use_container_width=True):
+            if desc_gasto.strip() == "":
+                st.error("Por favor coloca una pequeña descripción del gasto.")
+            else:
+                prov_info = dict_provs[prov_sel_str]
+                p_id_final = int(prov_info['id']) if prov_info is not None else 1
 
-            if guardar_gasto:
-                if desc_gasto.strip() == "":
-                    st.error("Por favor coloca una pequeña descripción del gasto.")
-                else:
-                    prov_info = dict_provs[prov_sel_str]
-                    p_id_final = int(prov_info['id']) if prov_info is not None else 1
+                fecha_g_final = fecha_gasto.strftime("%Y-%m-%d") + datetime.now().strftime(" %H:%M:%S")
 
-                    fecha_g_final = fecha_gasto.strftime("%Y-%m-%d") + datetime.now().strftime(" %H:%M:%S")
-
-                    try:
-                        supabase.table("gastos").insert({
-                            "proveedor_id": p_id_final,
-                            "descripcion": str(desc_gasto.strip()),
-                            "categoria": str(cat_gasto),
-                            "monto_usd": float(monto_gasto),
-                            "fecha": str(fecha_g_final)
-                        }).execute()
-                        st.success(f"✅ Gasto de ${monto_gasto:,.2f} registrado con éxito.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Error al guardar el gasto: {e}")
+                try:
+                    supabase.table("gastos").insert({
+                        "proveedor_id": p_id_final,
+                        "descripcion": str(desc_gasto.strip()),
+                        "categoria": str(cat_gasto),
+                        "monto_usd": float(monto_gasto),
+                        "fecha": str(fecha_g_final)
+                    }).execute()
+                    st.success(f"✅ Gasto de ${monto_gasto:,.2f} registrado con éxito.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error al guardar el gasto: {e}")
 
         st.divider()
         st.markdown('<div class="sub-header-yellow">📋 Historial de Gastos Registrados</div>', unsafe_allow_html=True)
@@ -1287,7 +1278,6 @@ elif menu == "💸 Gastos y Proveedores":
 
             st.dataframe(df_display_g, use_container_width=True)
 
-            # ✏️ NUEVO EXPANDER PARA EDITAR GASTOS
             with st.expander("✏️ Editar un Registro de Gasto"):
                 dict_gastos_edit = {
                     f"ID #{row['id']} - {row['descripcion']} (${limpiar_float(row['monto_usd']):.2f})": row
@@ -1296,29 +1286,26 @@ elif menu == "💸 Gastos y Proveedores":
                 g_edit_sel_str = st.selectbox("Selecciona el gasto a editar", list(dict_gastos_edit.keys()), key="sel_g_edit")
                 g_edit_info = dict_gastos_edit[g_edit_sel_str]
 
-                with st.form("form_editar_gasto"):
-                    n_desc = st.text_input("Descripción", value=str(g_edit_info['descripcion']))
-                    
-                    categorias_disp = ["🥜 Materia Prima (Maní, papas, etc.)", "📦 Empaques y Bolsas", "🧼 Insumos / Limpieza", "🚚 Transporte / Flete", "💡 Servicios / Varios"]
-                    cat_actual = g_edit_info.get('categoria', categorias_disp[0])
-                    idx_cat = categorias_disp.index(cat_actual) if cat_actual in categorias_disp else 0
-                    n_cat = st.selectbox("Categoría", categorias_disp, index=idx_cat)
+                n_desc = st.text_input("Descripción", value=str(g_edit_info['descripcion']), key="edit_g_desc")
+                
+                categorias_disp = ["🥜 Materia Prima (Maní, papas, etc.)", "📦 Empaques y Bolsas", "🧼 Insumos / Limpieza", "🚚 Transporte / Flete", "💡 Servicios / Varios"]
+                cat_actual = g_edit_info.get('categoria', categorias_disp[0])
+                idx_cat = categorias_disp.index(cat_actual) if cat_actual in categorias_disp else 0
+                n_cat = st.selectbox("Categoría", categorias_disp, index=idx_cat, key="edit_g_cat")
 
-                    n_monto = st.number_input("Monto en USD ($)", min_value=0.01, value=limpiar_float(g_edit_info['monto_usd']), step=1.0, format="%.2f")
-                    
-                    btn_act_gasto = st.form_submit_button("💾 Guardar Cambios", type="primary")
-
-                    if btn_act_gasto:
-                        try:
-                            supabase.table("gastos").update({
-                                "descripcion": str(n_desc.strip()),
-                                "categoria": str(n_cat),
-                                "monto_usd": float(n_monto)
-                            }).eq("id", int(g_edit_info['id'])).execute()
-                            st.success(f"✅ Gasto #{g_edit_info['id']} actualizado correctamente.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Error al actualizar el gasto: {e}")
+                n_monto = st.number_input("Monto en USD ($)", min_value=0.01, value=limpiar_float(g_edit_info['monto_usd']), step=1.0, format="%.2f", key="edit_g_monto")
+                
+                if st.button("💾 Guardar Cambios", type="primary", use_container_width=True, key="btn_save_g_edit"):
+                    try:
+                        supabase.table("gastos").update({
+                            "descripcion": str(n_desc.strip()),
+                            "categoria": str(n_cat),
+                            "monto_usd": float(n_monto)
+                        }).eq("id", int(g_edit_info['id'])).execute()
+                        st.success(f"✅ Gasto #{g_edit_info['id']} actualizado correctamente.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al actualizar el gasto: {e}")
 
             with st.expander("🗑️ Eliminar un Registro de Gasto (En caso de error)"):
                 dict_gastos_del = {
@@ -1349,28 +1336,28 @@ elif menu == "💸 Gastos y Proveedores":
 
         st.divider()
         st.markdown('<div class="sub-header-yellow">➕ Registrar Nuevo Proveedor</div>', unsafe_allow_html=True)
-        with st.form("form_nuevo_proveedor"):
-            p_nombre = st.text_input("Nombre de la Empresa / Proveedor")
-            c1, c2 = st.columns(2)
-            with c1: p_contacto = st.text_input("Persona de Contacto")
-            with c2: p_telefono = st.text_input("Teléfono / WhatsApp")
-            p_notas = st.text_area("Notas / Productos que vende")
+        
+        p_nombre = st.text_input("Nombre de la Empresa / Proveedor", key="add_prov_n")
+        c1, c2 = st.columns(2)
+        with c1: p_contacto = st.text_input("Persona de Contacto", key="add_prov_c")
+        with c2: p_telefono = st.text_input("Teléfono / WhatsApp", key="add_prov_t")
+        p_notas = st.text_area("Notas / Productos que vende", key="add_prov_not")
 
-            if st.form_submit_button("💾 Guardar Proveedor"):
-                if p_nombre.strip() != "":
-                    try:
-                        supabase.table("proveedores").insert({
-                            "nombre": str(p_nombre.strip()),
-                            "contacto": str(p_contacto.strip() if p_contacto else 'N/A'),
-                            "telefono": str(p_telefono.strip() if p_telefono else 'S/N'),
-                            "notas": str(p_notas.strip() if p_notas else '')
-                        }).execute()
-                        st.success(f"✅ Proveedor '{p_nombre}' guardado exitosamente.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Error al guardar proveedor: {e}")
-                else:
-                    st.error("El nombre del proveedor no puede estar vacío.")
+        if st.button("💾 Guardar Proveedor", type="primary", use_container_width=True):
+            if p_nombre.strip() != "":
+                try:
+                    supabase.table("proveedores").insert({
+                        "nombre": str(p_nombre.strip()),
+                        "contacto": str(p_contacto.strip() if p_contacto else 'N/A'),
+                        "telefono": str(p_telefono.strip() if p_telefono else 'S/N'),
+                        "notas": str(p_notas.strip() if p_notas else '')
+                    }).execute()
+                    st.success(f"✅ Proveedor '{p_nombre}' guardado exitosamente.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error al guardar proveedor: {e}")
+            else:
+                st.error("El nombre del proveedor no puede estar vacío.")
 
 # ---------------------------------------------------------
 # ALMANAQUE DE VENTAS
