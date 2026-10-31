@@ -719,7 +719,7 @@ elif menu == "💰 Transacciones Pagadas":
                     except Exception as e:
                         st.error(f"❌ Error al anular la transacción: {e}")
     else:
-        st.info("Aún no hay ventas o pagos registrados como completados.")
+        st.info("Aún no hay ventas or pagos registrados como completados.")
 
 # ---------------------------------------------------------
 # GESTIÓN DE CLIENTES Y CUENTAS POR COBRAR
@@ -932,7 +932,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
             st.divider()
             st.markdown('<div class="sub-header-yellow">📋 Registro General de Clientes Deudores (Detalle por Compra)</div>', unsafe_allow_html=True)
             
-            # 🔍 BUSCADOR POR CLIENTE
             busq_deudor = st.text_input("🔍 Filtrar por nombre de cliente...", placeholder="Escribe el nombre del cliente...")
             
             df_tabla_deudores = df_deudas[['Cliente', 'Teléfono', 'Producto', 'cantidad', 'precio_unitario', 'saldo_pendiente', 'fecha']].copy()
@@ -950,7 +949,6 @@ elif menu == "👥 Clientes y Cuentas por Cobrar":
 
             st.dataframe(df_tabla_deudores[['Cliente', 'Teléfono', 'Producto', 'Cantidad', 'Precio Unit. ($)', 'Saldo Pendiente ($)', 'Pendiente (Bs.)', 'Fecha de Compra']], use_container_width=True)
 
-            # 💰 TOTAL A PAGAR MOSTRADO DEBAJO DE LA TABLA
             total_deuda_filtrada = df_tabla_deudores['Saldo Pendiente ($)'].sum() if not df_tabla_deudores.empty else 0.0
             total_deuda_filtrada_bs = total_deuda_filtrada * tasa_oficial
 
@@ -1264,7 +1262,7 @@ elif menu == "💸 Gastos y Proveedores":
         st.markdown('<div class="sub-header-yellow">📋 Historial de Gastos Registrados</div>', unsafe_allow_html=True)
         
         try:
-            res_gastos_all = supabase.table("gastos").select("id, descripcion, categoria, monto_usd, fecha, proveedores(nombre)").order("fecha", desc=True).execute()
+            res_gastos_all = supabase.table("gastos").select("id, descripcion, categoria, monto_usd, fecha, proveedor_id, proveedores(nombre)").order("fecha", desc=True).execute()
             df_gastos_all = pd.DataFrame(res_gastos_all.data)
         except Exception:
             df_gastos_all = pd.DataFrame()
@@ -1288,6 +1286,39 @@ elif menu == "💸 Gastos y Proveedores":
             }, inplace=True)
 
             st.dataframe(df_display_g, use_container_width=True)
+
+            # ✏️ NUEVO EXPANDER PARA EDITAR GASTOS
+            with st.expander("✏️ Editar un Registro de Gasto"):
+                dict_gastos_edit = {
+                    f"ID #{row['id']} - {row['descripcion']} (${limpiar_float(row['monto_usd']):.2f})": row
+                    for _, row in df_gastos_all.iterrows()
+                }
+                g_edit_sel_str = st.selectbox("Selecciona el gasto a editar", list(dict_gastos_edit.keys()), key="sel_g_edit")
+                g_edit_info = dict_gastos_edit[g_edit_sel_str]
+
+                with st.form("form_editar_gasto"):
+                    n_desc = st.text_input("Descripción", value=str(g_edit_info['descripcion']))
+                    
+                    categorias_disp = ["🥜 Materia Prima (Maní, papas, etc.)", "📦 Empaques y Bolsas", "🧼 Insumos / Limpieza", "🚚 Transporte / Flete", "💡 Servicios / Varios"]
+                    cat_actual = g_edit_info.get('categoria', categorias_disp[0])
+                    idx_cat = categorias_disp.index(cat_actual) if cat_actual in categorias_disp else 0
+                    n_cat = st.selectbox("Categoría", categorias_disp, index=idx_cat)
+
+                    n_monto = st.number_input("Monto en USD ($)", min_value=0.01, value=limpiar_float(g_edit_info['monto_usd']), step=1.0, format="%.2f")
+                    
+                    btn_act_gasto = st.form_submit_button("💾 Guardar Cambios", type="primary")
+
+                    if btn_act_gasto:
+                        try:
+                            supabase.table("gastos").update({
+                                "descripcion": str(n_desc.strip()),
+                                "categoria": str(n_cat),
+                                "monto_usd": float(n_monto)
+                            }).eq("id", int(g_edit_info['id'])).execute()
+                            st.success(f"✅ Gasto #{g_edit_info['id']} actualizado correctamente.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error al actualizar el gasto: {e}")
 
             with st.expander("🗑️ Eliminar un Registro de Gasto (En caso de error)"):
                 dict_gastos_del = {
